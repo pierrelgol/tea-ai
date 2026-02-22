@@ -324,6 +324,7 @@ version = "0.1.0"
 source = { editable = "packages/detector-train" }
 dependencies = [
     { name = "detector-evaluator" },
+    { name = "detector-grader" },
     { name = "detector-infer" },
     { name = "numpy" },
     { name = "pyyaml" },
@@ -334,6 +335,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "detector-evaluator", editable = "packages/detector-evaluator" },
+    { name = "detector-grader", editable = "packages/detector-grader" },
     { name = "detector-infer", editable = "packages/detector-infer" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "pyyaml", specifier = ">=6.0.1" },

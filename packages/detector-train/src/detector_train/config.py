@@ -20,6 +20,29 @@ class TrainConfig:
     patience: int
     save_json: bool
 
+    optimizer: str
+    lr0: float | None
+    lrf: float | None
+    weight_decay: float | None
+    warmup_epochs: float | None
+    cos_lr: bool
+
+    close_mosaic: int | None
+    mosaic: float | None
+    mixup: float | None
+    degrees: float | None
+    translate: float | None
+    scale: float | None
+    shear: float | None
+    perspective: float | None
+    hsv_h: float | None
+    hsv_s: float | None
+    hsv_v: float | None
+    fliplr: float | None
+    flipud: float | None
+    copy_paste: float | None
+    multi_scale: bool
+
     wandb_enabled: bool
     wandb_project: str
     wandb_entity: str | None
@@ -38,6 +61,12 @@ class TrainConfig:
     eval_viz_samples: int
 
     def validate(self) -> None:
+        project_resolved = self.project if self.project.is_absolute() else (Path.cwd() / self.project)
+        project_resolved = project_resolved.resolve()
+        cwd_resolved = Path.cwd().resolve()
+        if not project_resolved.is_relative_to(cwd_resolved):
+            raise ValueError("project path must be inside the repository working directory")
+
         if self.epochs < 1:
             raise ValueError("epochs must be >= 1")
         if self.imgsz < 32:
@@ -48,6 +77,18 @@ class TrainConfig:
             raise ValueError("workers must be >= 0")
         if self.patience < 0:
             raise ValueError("patience must be >= 0")
+        if self.optimizer not in {"SGD", "AdamW", "auto"}:
+            raise ValueError("optimizer must be one of: SGD, AdamW, auto")
+        if self.lr0 is not None and self.lr0 <= 0:
+            raise ValueError("lr0 must be > 0")
+        if self.lrf is not None and self.lrf <= 0:
+            raise ValueError("lrf must be > 0")
+        if self.weight_decay is not None and self.weight_decay < 0:
+            raise ValueError("weight_decay must be >= 0")
+        if self.warmup_epochs is not None and self.warmup_epochs < 0:
+            raise ValueError("warmup_epochs must be >= 0")
+        if self.close_mosaic is not None and self.close_mosaic < 0:
+            raise ValueError("close_mosaic must be >= 0")
         if self.wandb_mode not in {"online", "offline", "auto"}:
             raise ValueError("wandb_mode must be one of: online, offline, auto")
         if self.wandb_log_profile not in {"core", "core+diag"}:

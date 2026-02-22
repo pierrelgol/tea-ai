@@ -69,6 +69,10 @@ train-detector: venv
     @uv sync --all-packages
     @uv run detector-train --dataset {{dataset}} --datasets-base-root dataset/augmented --artifacts-root artifacts/detector-train
 
+optimize-detector: venv
+    @uv sync --all-packages
+    @uv run detector-train-optimize --dataset {{dataset}} --datasets-base-root dataset/augmented --artifacts-root artifacts/detector-train --predictions-root predictions --baseline-file baseline.txt
+
 infer-detector WEIGHTS MODEL: venv
     @uv sync --all-packages
     @uv run detector-infer --weights {{WEIGHTS}} --model-name {{MODEL}} --dataset {{dataset}} --datasets-base-root dataset/augmented --output-root predictions

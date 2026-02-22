@@ -262,6 +262,8 @@ def _run_periodic_eval(
 def train_detector(config: TrainConfig) -> dict[str, Any]:
     config.validate()
     device = _resolve_device(config.device)
+    project_dir = config.project if config.project.is_absolute() else (Path.cwd() / config.project)
+    project_dir = project_dir.resolve()
 
     data_yaml_path, names = write_data_yaml(
         dataset_root=config.dataset_root,
@@ -279,6 +281,27 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "seed": config.seed,
         "workers": config.workers,
         "patience": config.patience,
+        "optimizer": config.optimizer,
+        "lr0": config.lr0,
+        "lrf": config.lrf,
+        "weight_decay": config.weight_decay,
+        "warmup_epochs": config.warmup_epochs,
+        "cos_lr": config.cos_lr,
+        "close_mosaic": config.close_mosaic,
+        "mosaic": config.mosaic,
+        "mixup": config.mixup,
+        "degrees": config.degrees,
+        "translate": config.translate,
+        "scale": config.scale,
+        "shear": config.shear,
+        "perspective": config.perspective,
+        "hsv_h": config.hsv_h,
+        "hsv_s": config.hsv_s,
+        "hsv_v": config.hsv_v,
+        "fliplr": config.fliplr,
+        "flipud": config.flipud,
+        "copy_paste": config.copy_paste,
+        "multi_scale": config.multi_scale,
         "classes_count": len(names),
         "wandb_log_profile": config.wandb_log_profile,
         "wandb_log_every_epoch": config.wandb_log_every_epoch,
@@ -336,7 +359,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             if not should_eval:
                 return
 
-            save_dir_cb = Path(getattr(trainer, "save_dir", config.project / config.name))
+            save_dir_cb = Path(getattr(trainer, "save_dir", project_dir / config.name))
             try:
                 eval_result = _run_periodic_eval(
                     config=config,
@@ -360,21 +383,51 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             last_eval_epoch = current_epoch
 
         model.add_callback("on_fit_epoch_end", _on_fit_epoch_end)
+        train_kwargs: dict[str, Any] = {
+            "data": str(data_yaml_path),
+            "epochs": config.epochs,
+            "imgsz": config.imgsz,
+            "batch": config.batch,
+            "device": device,
+            "project": str(project_dir),
+            "name": config.name,
+            "seed": config.seed,
+            "workers": config.workers,
+            "patience": config.patience,
+            "exist_ok": True,
+            "optimizer": config.optimizer,
+            "cos_lr": config.cos_lr,
+            "multi_scale": config.multi_scale,
+        }
+        optional_train_kwargs = {
+            "lr0": config.lr0,
+            "lrf": config.lrf,
+            "weight_decay": config.weight_decay,
+            "warmup_epochs": config.warmup_epochs,
+            "close_mosaic": config.close_mosaic,
+            "mosaic": config.mosaic,
+            "mixup": config.mixup,
+            "degrees": config.degrees,
+            "translate": config.translate,
+            "scale": config.scale,
+            "shear": config.shear,
+            "perspective": config.perspective,
+            "hsv_h": config.hsv_h,
+            "hsv_s": config.hsv_s,
+            "hsv_v": config.hsv_v,
+            "fliplr": config.fliplr,
+            "flipud": config.flipud,
+            "copy_paste": config.copy_paste,
+        }
+        for key, value in optional_train_kwargs.items():
+            if value is not None:
+                train_kwargs[key] = value
+
         train_result = model.train(
-            data=str(data_yaml_path),
-            epochs=config.epochs,
-            imgsz=config.imgsz,
-            batch=config.batch,
-            device=device,
-            project=str(config.project),
-            name=config.name,
-            seed=config.seed,
-            workers=config.workers,
-            patience=config.patience,
-            exist_ok=True,
+            **train_kwargs,
         )
 
-        save_dir = Path(getattr(train_result, "save_dir", config.project / config.name))
+        save_dir = Path(getattr(train_result, "save_dir", project_dir / config.name))
         weights_dir = save_dir / "weights"
         best_weights = weights_dir / "best.pt"
         last_weights = weights_dir / "last.pt"

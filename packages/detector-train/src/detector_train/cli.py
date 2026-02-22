@@ -26,6 +26,28 @@ def main() -> None:
     parser.add_argument("--patience", type=int, default=50)
     parser.add_argument("--save-json", action=argparse.BooleanOptionalAction, default=True)
 
+    parser.add_argument("--optimizer", choices=["SGD", "AdamW", "auto"], default="auto")
+    parser.add_argument("--lr0", type=float, default=None)
+    parser.add_argument("--lrf", type=float, default=None)
+    parser.add_argument("--weight-decay", type=float, default=None)
+    parser.add_argument("--warmup-epochs", type=float, default=None)
+    parser.add_argument("--cos-lr", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--close-mosaic", type=int, default=None)
+    parser.add_argument("--mosaic", type=float, default=None)
+    parser.add_argument("--mixup", type=float, default=None)
+    parser.add_argument("--degrees", type=float, default=None)
+    parser.add_argument("--translate", type=float, default=None)
+    parser.add_argument("--scale", type=float, default=None)
+    parser.add_argument("--shear", type=float, default=None)
+    parser.add_argument("--perspective", type=float, default=None)
+    parser.add_argument("--hsv-h", type=float, default=None)
+    parser.add_argument("--hsv-s", type=float, default=None)
+    parser.add_argument("--hsv-v", type=float, default=None)
+    parser.add_argument("--fliplr", type=float, default=None)
+    parser.add_argument("--flipud", type=float, default=None)
+    parser.add_argument("--copy-paste", type=float, default=None)
+    parser.add_argument("--multi-scale", action=argparse.BooleanOptionalAction, default=False)
+
     parser.add_argument("--wandb", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--wandb-project", default="tea-ai-detector")
     parser.add_argument("--wandb-entity", default=None)
@@ -62,6 +84,27 @@ def main() -> None:
         workers=args.workers,
         patience=args.patience,
         save_json=args.save_json,
+        optimizer=args.optimizer,
+        lr0=args.lr0,
+        lrf=args.lrf,
+        weight_decay=args.weight_decay,
+        warmup_epochs=args.warmup_epochs,
+        cos_lr=args.cos_lr,
+        close_mosaic=args.close_mosaic,
+        mosaic=args.mosaic,
+        mixup=args.mixup,
+        degrees=args.degrees,
+        translate=args.translate,
+        scale=args.scale,
+        shear=args.shear,
+        perspective=args.perspective,
+        hsv_h=args.hsv_h,
+        hsv_s=args.hsv_s,
+        hsv_v=args.hsv_v,
+        fliplr=args.fliplr,
+        flipud=args.flipud,
+        copy_paste=args.copy_paste,
+        multi_scale=args.multi_scale,
         wandb_enabled=args.wandb,
         wandb_project=args.wandb_project,
         wandb_entity=args.wandb_entity,

@@ -5,6 +5,7 @@ description = "Composable AI pipeline workspace"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "dinov3",
   "augment-checker",
   "detector-grader",
   "detector-reviewer",
@@ -20,6 +21,7 @@ dependencies = [
 members = ["packages/*"]
 
 [tool.uv.sources]
+dinov3 = { workspace = true }
 augment-checker = { workspace = true }
 detector-grader = { workspace = true }
 detector-reviewer = { workspace = true }

@@ -50,6 +50,10 @@ class TrainConfig:
     copy_paste: float = 0.0
     multi_scale: bool = False
     freeze: int | None = None
+    dino_root: Path = Path("dinov3")
+    dino_distill_weight: float = 0.2
+    dino_distill_warmup_epochs: int = 5
+    dino_student_embed_layer: int = -2
 
     wandb_enabled: bool = True
     wandb_project: str = "tea-ai-detector"
@@ -102,6 +106,10 @@ class TrainConfig:
             raise ValueError("close_mosaic must be >= 0")
         if self.freeze is not None and self.freeze < 0:
             raise ValueError("freeze must be >= 0")
+        if self.dino_distill_weight < 0:
+            raise ValueError("dino_distill_weight must be >= 0")
+        if self.dino_distill_warmup_epochs < 0:
+            raise ValueError("dino_distill_warmup_epochs must be >= 0")
         if self.wandb_mode not in {"online", "offline", "auto"}:
             raise ValueError("wandb_mode must be one of: online, offline, auto")
         if self.eval_interval_epochs < 1:

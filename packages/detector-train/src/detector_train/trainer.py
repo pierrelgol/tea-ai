@@ -12,6 +12,7 @@ import shutil
 
 from .config import TrainConfig
 from .data_yaml import write_data_yaml
+from .dino_trainer import DinoOBBTrainer
 from .wandb_logger import finish_wandb, init_wandb, log_wandb
 
 
@@ -190,6 +191,12 @@ def _extract_epoch_metrics(trainer) -> dict[str, float]:
     losses = [out[k] for k in loss_keys if k in out]
     if losses:
         out["train/loss_total"] = float(sum(losses))
+    dino_epoch_loss = _to_float(getattr(trainer, "_dino_epoch_loss", None))
+    if dino_epoch_loss is not None:
+        out["train/loss_distill"] = dino_epoch_loss
+    dino_weight = _to_float(getattr(trainer, "_dino_last_weight", None))
+    if dino_weight is not None:
+        out["train/distill_weight"] = dino_weight
 
     return out
 
@@ -350,6 +357,10 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "copy_paste": config.copy_paste,
         "multi_scale": config.multi_scale,
         "freeze": config.freeze,
+        "dino_root": str(config.dino_root),
+        "dino_distill_weight": config.dino_distill_weight,
+        "dino_distill_warmup_epochs": config.dino_distill_warmup_epochs,
+        "dino_student_embed_layer": config.dino_student_embed_layer,
         "classes_count": len(names),
         "wandb_log_every_epoch": config.wandb_log_every_epoch,
         "wandb_log_system_metrics": config.wandb_log_system_metrics,
@@ -388,6 +399,12 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                 f"model is not an OBB model (task={model_task!r}): {config.model}. "
                 "Use an OBB checkpoint."
             )
+        DinoOBBTrainer.configure(
+            dino_root=config.dino_root,
+            distill_weight=config.dino_distill_weight,
+            warmup_epochs=config.dino_distill_warmup_epochs,
+            student_embed_layer=config.dino_student_embed_layer,
+        )
         safe_warmup_epochs = float(config.warmup_epochs) if config.warmup_epochs is not None else 0.0
         safe_fliplr = float(config.fliplr) if config.fliplr is not None else 0.0
         safe_flipud = float(config.flipud) if config.flipud is not None else 0.0
@@ -503,6 +520,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             train_kwargs["freeze"] = config.freeze
 
         train_result = model.train(
+            trainer=DinoOBBTrainer,
             **train_kwargs,
         )
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -54,6 +55,30 @@ class CachedSample:
     gt_labels: list[Any]
     pred_labels_all: list[Any]
 
+
+CALIBRATION_HOLDOUT_RATIO = 0.4
+MIN_CALIBRATION_SAMPLES = 40
+MIN_EVALUATION_SAMPLES = 40
+
+
+def _split_for_calibration(
+    samples: list[CachedSample],
+    *,
+    seed: int,
+    holdout_ratio: float = CALIBRATION_HOLDOUT_RATIO,
+) -> tuple[list[CachedSample], list[CachedSample]]:
+    holdout_ratio = float(max(0.0, min(1.0, holdout_ratio)))
+    calibration: list[CachedSample] = []
+    evaluation: list[CachedSample] = []
+    for s in samples:
+        token = f"{seed}:{s.split}:{s.stem}".encode("utf-8")
+        h = int.from_bytes(hashlib.sha1(token).digest()[:8], "big")
+        u = (h % 10_000) / 10_000.0
+        if u < holdout_ratio:
+            calibration.append(s)
+        else:
+            evaluation.append(s)
+    return calibration, evaluation
 
 
 def load_weights_profile(path: Path | None) -> ScoreWeights:
@@ -318,18 +343,33 @@ def run_grading(config: GradingConfig) -> dict[str, Any]:
         if config.calibration_candidates is None
         else [float(x) for x in config.calibration_candidates]
     )
+    calibration_samples: list[CachedSample] = []
+    evaluation_samples: list[CachedSample] = list(cached_samples)
     per_class_thresholds: dict[int, float] = {}
+    calibration_applied = False
     if config.calibrate_confidence and cached_samples:
-        per_class_thresholds = _calibrate_per_class_thresholds(
+        calibration_samples, evaluation_samples = _split_for_calibration(
             cached_samples,
-            base_threshold=float(config.conf_threshold),
-            candidates=calibration_candidates,
-            match_iou_threshold=config.match_iou_threshold,
-            weights_profile=weights_profile,
+            seed=config.seed,
         )
+        if (
+            len(calibration_samples) >= MIN_CALIBRATION_SAMPLES
+            and len(evaluation_samples) >= MIN_EVALUATION_SAMPLES
+        ):
+            per_class_thresholds = _calibrate_per_class_thresholds(
+                calibration_samples,
+                base_threshold=float(config.conf_threshold),
+                candidates=calibration_candidates,
+                match_iou_threshold=config.match_iou_threshold,
+                weights_profile=weights_profile,
+            )
+            calibration_applied = True
+        else:
+            calibration_samples = []
+            evaluation_samples = list(cached_samples)
 
     sample_rows = _score_cached_samples(
-        cached_samples,
+        evaluation_samples,
         per_class_thresholds=per_class_thresholds,
         default_threshold=float(config.conf_threshold),
         match_iou_threshold=config.match_iou_threshold,
@@ -337,6 +377,13 @@ def run_grading(config: GradingConfig) -> dict[str, Any]:
     )
     aggregate = aggregate_scores(sample_rows)
     aggregate["invalid_samples_skipped"] = invalid_count
+    aggregate["calibration"] = {
+        "enabled": bool(config.calibrate_confidence),
+        "applied": calibration_applied,
+        "holdout_ratio": CALIBRATION_HOLDOUT_RATIO,
+        "calibration_samples": len(calibration_samples),
+        "evaluation_samples": len(evaluation_samples),
+    }
     aggregate["data_quality"] = {
         "indexed_samples": indexed_count,
         "missing_image_samples": missing_image_count,
@@ -373,6 +420,10 @@ def run_grading(config: GradingConfig) -> dict[str, Any]:
         "splits": splits,
         "conf_threshold": config.conf_threshold,
         "calibrate_confidence": config.calibrate_confidence,
+        "calibration_applied": calibration_applied,
+        "calibration_holdout_ratio": CALIBRATION_HOLDOUT_RATIO,
+        "calibration_samples": len(calibration_samples),
+        "evaluation_samples": len(evaluation_samples),
         "calibration_candidates": calibration_candidates,
         "calibrated_per_class_thresholds": {str(k): float(v) for k, v in per_class_thresholds.items()},
         "infer_iou_threshold": config.infer_iou_threshold,

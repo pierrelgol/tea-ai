@@ -41,6 +41,18 @@ class GradingConfig:
     strict_obb: bool = True
     max_samples: int | None = None
     seed: int = 42
+    calibrate_confidence: bool = True
+    calibration_candidates: list[float] | None = None
+
+
+@dataclass(slots=True)
+class CachedSample:
+    split: str
+    stem: str
+    w: int
+    h: int
+    gt_labels: list[Any]
+    pred_labels_all: list[Any]
 
 
 
@@ -119,6 +131,78 @@ def _split_geometry_summary(aggregate: dict[str, Any]) -> dict[str, float | None
     }
 
 
+def _filter_predictions(preds: list[Any], per_class_thresholds: dict[int, float], default_threshold: float) -> list[Any]:
+    out: list[Any] = []
+    for p in preds:
+        thr = float(per_class_thresholds.get(int(p.class_id), default_threshold))
+        if float(p.confidence) >= thr:
+            out.append(p)
+    return out
+
+
+def _score_cached_samples(
+    samples: list[CachedSample],
+    *,
+    per_class_thresholds: dict[int, float],
+    default_threshold: float,
+    match_iou_threshold: float,
+    weights_profile: ScoreWeights,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for sample in samples:
+        preds = _filter_predictions(sample.pred_labels_all, per_class_thresholds, default_threshold)
+        rows.append(
+            score_sample(
+                split=sample.split,
+                stem=sample.stem,
+                gt_labels=sample.gt_labels,
+                pred_labels=preds,
+                w=sample.w,
+                h=sample.h,
+                iou_threshold=match_iou_threshold,
+                weights=weights_profile,
+            )
+        )
+    return rows
+
+
+def _calibrate_per_class_thresholds(
+    samples: list[CachedSample],
+    *,
+    base_threshold: float,
+    candidates: list[float],
+    match_iou_threshold: float,
+    weights_profile: ScoreWeights,
+) -> dict[int, float]:
+    class_ids: set[int] = set()
+    for s in samples:
+        class_ids.update(int(g.class_id) for g in s.gt_labels)
+        class_ids.update(int(p.class_id) for p in s.pred_labels_all)
+    if not class_ids:
+        return {}
+
+    thresholds: dict[int, float] = {}
+    for class_id in sorted(class_ids):
+        best_t = float(base_threshold)
+        best_grade = -1.0
+        for t in candidates:
+            trial = dict(thresholds)
+            trial[class_id] = float(t)
+            rows = _score_cached_samples(
+                samples,
+                per_class_thresholds=trial,
+                default_threshold=base_threshold,
+                match_iou_threshold=match_iou_threshold,
+                weights_profile=weights_profile,
+            )
+            grade = float(aggregate_scores(rows).get("run_grade_0_100", 0.0))
+            if grade > best_grade:
+                best_grade = grade
+                best_t = float(t)
+        thresholds[class_id] = best_t
+    return thresholds
+
+
 def run_grading(config: GradingConfig) -> dict[str, Any]:
     splits = config.splits if config.splits is not None else ["train", "val"]
     reports_dir = config.reports_dir if config.reports_dir is not None else config.dataset_root / "grade_reports"
@@ -163,6 +247,7 @@ def run_grading(config: GradingConfig) -> dict[str, Any]:
 
     records = index_ground_truth(config.dataset_root)
     sample_rows: list[dict[str, Any]] = []
+    cached_samples: list[CachedSample] = []
     invalid_count = 0
     indexed_count = 0
     missing_image_count = 0
@@ -204,12 +289,12 @@ def run_grading(config: GradingConfig) -> dict[str, Any]:
 
         try:
             gt_labels = load_labels(rec.gt_label_path, is_prediction=False, conf_threshold=0.0)
-            pred_labels = load_prediction_labels(
+            pred_labels_all = load_prediction_labels(
                 predictions_root=config.predictions_root,
                 model_name=model_key,
                 split=rec.split,
                 stem=rec.stem,
-                conf_threshold=config.conf_threshold,
+                conf_threshold=0.0,
             )
         except Exception:
             if config.strict_obb:
@@ -217,19 +302,39 @@ def run_grading(config: GradingConfig) -> dict[str, Any]:
             invalid_count += 1
             by_split_invalid[rec.split] = by_split_invalid.get(rec.split, 0) + 1
             continue
-
-        row = score_sample(
-            split=rec.split,
-            stem=rec.stem,
-            gt_labels=gt_labels,
-            pred_labels=pred_labels,
-            w=w,
-            h=h,
-            iou_threshold=config.match_iou_threshold,
-            weights=weights_profile,
+        cached_samples.append(
+            CachedSample(
+                split=rec.split,
+                stem=rec.stem,
+                w=w,
+                h=h,
+                gt_labels=gt_labels,
+                pred_labels_all=pred_labels_all,
+            )
         )
-        sample_rows.append(row)
 
+    calibration_candidates = (
+        [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.50, 0.60]
+        if config.calibration_candidates is None
+        else [float(x) for x in config.calibration_candidates]
+    )
+    per_class_thresholds: dict[int, float] = {}
+    if config.calibrate_confidence and cached_samples:
+        per_class_thresholds = _calibrate_per_class_thresholds(
+            cached_samples,
+            base_threshold=float(config.conf_threshold),
+            candidates=calibration_candidates,
+            match_iou_threshold=config.match_iou_threshold,
+            weights_profile=weights_profile,
+        )
+
+    sample_rows = _score_cached_samples(
+        cached_samples,
+        per_class_thresholds=per_class_thresholds,
+        default_threshold=float(config.conf_threshold),
+        match_iou_threshold=config.match_iou_threshold,
+        weights_profile=weights_profile,
+    )
     aggregate = aggregate_scores(sample_rows)
     aggregate["invalid_samples_skipped"] = invalid_count
     aggregate["data_quality"] = {
@@ -267,6 +372,9 @@ def run_grading(config: GradingConfig) -> dict[str, Any]:
         "run_inference": config.run_inference,
         "splits": splits,
         "conf_threshold": config.conf_threshold,
+        "calibrate_confidence": config.calibrate_confidence,
+        "calibration_candidates": calibration_candidates,
+        "calibrated_per_class_thresholds": {str(k): float(v) for k, v in per_class_thresholds.items()},
         "infer_iou_threshold": config.infer_iou_threshold,
         "match_iou_threshold": config.match_iou_threshold,
         "weights_profile": {

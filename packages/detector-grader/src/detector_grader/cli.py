@@ -18,6 +18,7 @@ def main() -> None:
     parser.add_argument("--model", default="latest", help="Prediction model key or latest")
     parser.add_argument("--run-inference", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--conf-threshold", type=float, default=0.25, help="Confidence threshold for infer + grading")
+    parser.add_argument("--calibrate-confidence", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -36,6 +37,7 @@ def main() -> None:
             imgsz=640,
             device="auto",
             conf_threshold=args.conf_threshold,
+            calibrate_confidence=args.calibrate_confidence,
             infer_iou_threshold=0.7,
             match_iou_threshold=0.5,
             weights_json=None,

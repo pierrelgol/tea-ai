@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import shutil
 
 from .app import run_app
 
@@ -11,6 +12,10 @@ def main() -> None:
     parser.parse_args()
 
     targets_root = Path("dataset") / "targets"
+    for rel in ("images", "labels"):
+        p = targets_root / rel
+        if p.exists():
+            shutil.rmtree(p)
     run_app(
         images_dir=Path("targets"),
         labels_dir=targets_root / "labels",

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import shutil
 from typing import Any
 
 from detector_infer.config import InferConfig
@@ -120,6 +121,8 @@ def _split_geometry_summary(aggregate: dict[str, Any]) -> dict[str, float | None
 def run_grading(config: GradingConfig) -> dict[str, Any]:
     splits = config.splits if config.splits is not None else ["train", "val"]
     reports_dir = config.reports_dir if config.reports_dir is not None else config.dataset_root / "grade_reports"
+    if reports_dir.exists():
+        shutil.rmtree(reports_dir)
     weights_profile = load_weights_profile(config.weights_json)
 
     weights_path, model_key, has_existing = resolve_model_source(

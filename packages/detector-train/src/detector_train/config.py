@@ -26,7 +26,7 @@ class TrainConfig:
     lr0: float = 0.002
     lrf: float = 0.01
     weight_decay: float = 0.0005
-    warmup_epochs: float | None = None
+    warmup_epochs: float = 3.0
     cos_lr: bool = True
 
     close_mosaic: int = 20
@@ -40,9 +40,9 @@ class TrainConfig:
     hsv_h: float = 0.010
     hsv_s: float = 0.35
     hsv_v: float = 0.25
-    fliplr: float | None = None
-    flipud: float | None = None
-    copy_paste: float | None = None
+    fliplr: float = 0.5
+    flipud: float = 0.0
+    copy_paste: float = 0.0
     multi_scale: bool = False
     freeze: int | None = None
 
@@ -89,7 +89,7 @@ class TrainConfig:
             raise ValueError("lrf must be > 0")
         if self.weight_decay < 0:
             raise ValueError("weight_decay must be >= 0")
-        if self.warmup_epochs is not None and self.warmup_epochs < 0:
+        if self.warmup_epochs < 0:
             raise ValueError("warmup_epochs must be >= 0")
         if self.close_mosaic < 0:
             raise ValueError("close_mosaic must be >= 0")

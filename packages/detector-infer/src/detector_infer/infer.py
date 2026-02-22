@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
+import shutil
 from typing import Any
 
 import numpy as np
@@ -68,6 +69,9 @@ def run_inference(config: InferConfig) -> dict:
     config.validate()
     _set_seed(config.seed)
     device = _resolve_device(config.device)
+    model_labels_root = config.output_root / config.model_name / "labels"
+    if model_labels_root.exists():
+        shutil.rmtree(model_labels_root)
 
     from ultralytics import YOLO
 

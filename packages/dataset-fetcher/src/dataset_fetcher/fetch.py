@@ -25,8 +25,11 @@ def _fetch_zip_dataset(dataset_root: Path, dataset_dir_name: str, urls: list[str
     dataset_root.mkdir(parents=True, exist_ok=True)
     target_dir = dataset_root / dataset_dir_name
 
-    if target_dir.exists() and any(target_dir.iterdir()):
-        return target_dir
+    if target_dir.exists():
+        if target_dir.is_symlink() or target_dir.is_file():
+            target_dir.unlink()
+        else:
+            shutil.rmtree(target_dir)
 
     with tempfile.TemporaryDirectory(prefix=f"{dataset_dir_name}-") as tmp_dir:
         archive_path = Path(tmp_dir) / f"{dataset_dir_name}.zip"
@@ -51,8 +54,12 @@ def _fetch_local_dataset(local_path: str, dataset_root: Path, dataset_dir_name: 
     # Keep operation cheap and non-destructive by using a symlink into dataset_root.
     dataset_root.mkdir(parents=True, exist_ok=True)
     link_path = dataset_root / dataset_dir_name
-    if not link_path.exists():
-        link_path.symlink_to(candidate, target_is_directory=True)
+    if link_path.exists() or link_path.is_symlink():
+        if link_path.is_symlink() or link_path.is_file():
+            link_path.unlink()
+        else:
+            shutil.rmtree(link_path)
+    link_path.symlink_to(candidate, target_is_directory=True)
     return link_path.resolve()
 
 

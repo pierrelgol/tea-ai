@@ -23,13 +23,13 @@ class GeneratorConfig:
     seed: int | None = None
     generator_version: str = "obb_robust_v2"
 
-    targets_per_image_min: int = 3
-    targets_per_image_max: int = 6
+    targets_per_image_min: int = 1
+    targets_per_image_max: int = 3
     max_occlusion_ratio: float = 0.60
     allow_partial_visibility: bool = True
 
-    scale_min: float = 0.25
-    scale_max: float = 1.35
+    scale_min: float = 0.12
+    scale_max: float = 0.65
     translate_frac: float = 0.35
     perspective_jitter: float = 0.12
     min_quad_area_frac: float = 0.0015

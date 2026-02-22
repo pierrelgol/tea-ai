@@ -12,12 +12,9 @@ build: venv
     @shopt -s nullglob
     @for pkg in packages/*; do \
       if [[ -f "$pkg/pyproject.toml" ]]; then \
-        if compgen -G "$pkg/dist/*.whl" > /dev/null && compgen -G "$pkg/dist/*.tar.gz" > /dev/null; then \
-          :; \
-        else \
-          mkdir -p "$pkg/dist"; \
-          uv build "$pkg" --out-dir "$pkg/dist"; \
-        fi; \
+        rm -rf "$pkg/dist" "$pkg/build"; \
+        mkdir -p "$pkg/dist"; \
+        uv build "$pkg" --out-dir "$pkg/dist"; \
       fi; \
     done
 
@@ -47,30 +44,37 @@ fclean: clean
 
 fetch-dataset: venv
     @uv sync --all-packages
+    @rm -rf dataset/{{dataset}}
     @uv run dataset-fetcher --dataset {{dataset}}
 
 label-targets: venv
     @uv sync --all-packages
+    @rm -rf dataset/targets/images dataset/targets/labels
     @uv run target-labeller
 
 generate-dataset: venv
     @uv sync --all-packages
+    @rm -rf dataset/augmented/{{dataset}}
     @uv run dataset-generator --dataset {{dataset}}
 
 check-dataset: venv
     @uv sync --all-packages
+    @rm -rf dataset/augmented/{{dataset}}/reports
     @uv run augment-checker --dataset {{dataset}}
 
 train: venv
     @uv sync --all-packages
+    @rm -rf artifacts/detector-train/runs/current artifacts/detector-train/eval_predictions/current artifacts/detector-train/eval_reports/current
     @uv run detector-train --dataset {{dataset}}
 
 eval: venv
     @uv sync --all-packages
-    @weights=$$(uv run python -c 'import json; from pathlib import Path; payload=json.loads(Path("artifacts/detector-train/latest_run.json").read_text(encoding="utf-8")); print(payload["weights_best"])'); \
-    model_key=$$(uv run python -c 'import json; from pathlib import Path; from detector_grader.data import infer_model_name_from_weights; payload=json.loads(Path("artifacts/detector-train/latest_run.json").read_text(encoding="utf-8")); print(infer_model_name_from_weights(Path(payload["weights_best"])))'); \
-    uv run detector-infer --dataset {{dataset}} --weights "$$weights" --model-name "$$model_key"; \
-    uv run detector-grader --dataset {{dataset}} --model "$$model_key" --run-inference false
+    @rm -rf predictions dataset/augmented/{{dataset}}/grade_reports
+    @latest_json="artifacts/detector-train/latest_run.json"; \
+    weights=$(uv run python -c "import json,sys; print(json.loads(open(sys.argv[1], encoding='utf-8').read())['weights_best'])" "$latest_json"); \
+    model_key=$(uv run python -c "import json,sys; from pathlib import Path; from detector_grader.data import infer_model_name_from_weights; payload=json.loads(open(sys.argv[1], encoding='utf-8').read()); print(infer_model_name_from_weights(Path(payload['weights_best'])))" "$latest_json"); \
+    uv run detector-infer --dataset {{dataset}} --weights "$weights" --model-name "$model_key"; \
+    uv run detector-grader --dataset {{dataset}} --model "$model_key" --no-run-inference
 
 review: venv
     @uv sync --all-packages

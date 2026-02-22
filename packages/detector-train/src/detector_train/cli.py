@@ -16,14 +16,15 @@ def main() -> None:
     args = parser.parse_args()
 
     dataset_root = Path("dataset/augmented") / args.dataset
-    run_name = datetime.utcnow().strftime("run-%Y%m%d-%H%M%S")
+    wandb_run_name = datetime.utcnow().strftime("run-%Y%m%d-%H%M%S")
 
     config = TrainConfig(
         dataset_root=dataset_root,
         artifacts_root=Path("artifacts/detector-train"),
         model=args.model,
-        name=run_name,
+        name="current",
         seed=args.seed,
+        wandb_run_name=wandb_run_name,
     )
 
     summary = train_detector(config)

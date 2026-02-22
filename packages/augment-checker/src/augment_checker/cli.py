@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import shutil
 
 from .dataset_index import index_dataset
 from .geometry import run_geometry_checks
@@ -23,6 +24,8 @@ def main() -> None:
 
     dataset_root = Path("dataset/augmented") / args.dataset
     reports_dir = dataset_root / "reports"
+    if reports_dir.exists():
+        shutil.rmtree(reports_dir)
 
     records = index_dataset(dataset_root)
     integrity_issues, integrity_summary = run_integrity_checks(records)

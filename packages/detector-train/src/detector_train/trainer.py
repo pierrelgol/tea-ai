@@ -7,6 +7,7 @@ from typing import Any
 import csv
 import json
 import re
+import shutil
 
 from .config import TrainConfig
 from .data_yaml import write_data_yaml
@@ -302,7 +303,21 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
     try:
         from ultralytics import YOLO
 
+        save_dir_base = project_dir / config.name
+        if save_dir_base.exists():
+            shutil.rmtree(save_dir_base)
+        eval_predictions_root = config.artifacts_root / "eval_predictions" / config.name
+        eval_reports_root = config.artifacts_root / "eval_reports" / config.name
+        if eval_predictions_root.exists():
+            shutil.rmtree(eval_predictions_root)
+        if eval_reports_root.exists():
+            shutil.rmtree(eval_reports_root)
+
         model = YOLO(config.model)
+        safe_warmup_epochs = float(config.warmup_epochs) if config.warmup_epochs is not None else 0.0
+        safe_fliplr = float(config.fliplr) if config.fliplr is not None else 0.0
+        safe_flipud = float(config.flipud) if config.flipud is not None else 0.0
+        safe_copy_paste = float(config.copy_paste) if config.copy_paste is not None else 0.0
         periodic_eval: list[dict[str, Any]] = []
         last_eval_epoch = -1
         logged_keys_by_step: dict[int, set[str]] = {}
@@ -376,7 +391,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             "lr0": config.lr0,
             "lrf": config.lrf,
             "weight_decay": config.weight_decay,
-            "warmup_epochs": config.warmup_epochs,
+            "warmup_epochs": safe_warmup_epochs,
             "cos_lr": config.cos_lr,
             "close_mosaic": config.close_mosaic,
             "mosaic": config.mosaic,
@@ -389,12 +404,13 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             "hsv_h": config.hsv_h,
             "hsv_s": config.hsv_s,
             "hsv_v": config.hsv_v,
-            "fliplr": config.fliplr,
-            "flipud": config.flipud,
-            "copy_paste": config.copy_paste,
+            "fliplr": safe_fliplr,
+            "flipud": safe_flipud,
+            "copy_paste": safe_copy_paste,
             "multi_scale": config.multi_scale,
-            "freeze": config.freeze,
         }
+        if config.freeze is not None:
+            train_kwargs["freeze"] = config.freeze
 
         train_result = model.train(
             **train_kwargs,

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 from typing import Any
 
 import cv2
@@ -51,6 +53,30 @@ def _ensure_output_layout(root: Path) -> None:
         (root / "images" / split).mkdir(parents=True, exist_ok=True)
         (root / "labels" / split).mkdir(parents=True, exist_ok=True)
         (root / "meta" / split).mkdir(parents=True, exist_ok=True)
+
+
+def _scaled_homography_params_for_target_count(
+    *,
+    base: HomographyParams,
+    n_targets: int,
+    config: GeneratorConfig,
+) -> HomographyParams:
+    """Shrink target scale bounds when placing more targets on the same image."""
+    min_targets = config.targets_per_image_min
+    max_targets = config.targets_per_image_max
+    if max_targets <= min_targets:
+        return base
+
+    crowd_ratio = (n_targets - min_targets) / float(max_targets - min_targets)
+    crowd_ratio = float(np.clip(crowd_ratio, 0.0, 1.0))
+
+    # At max crowd, targets are 30% of baseline size bounds.
+    min_scale_factor = 0.30
+    scale_factor = 1.0 - (1.0 - min_scale_factor) * crowd_ratio
+
+    scaled_min = max(0.05, base.scale_min * scale_factor)
+    scaled_max = max(scaled_min, base.scale_max * scale_factor)
+    return replace(base, scale_min=scaled_min, scale_max=scaled_max)
 
 
 def _try_place_target(
@@ -111,6 +137,8 @@ def _try_place_target(
 
 def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
     config.validate()
+    if config.output_root.exists():
+        shutil.rmtree(config.output_root)
 
     targets = load_canonical_targets(
         target_images_dir=config.target_images_dir,
@@ -174,6 +202,11 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
 
             for sample_idx in range(config.samples_per_background):
                 n_targets = int(rng.integers(config.targets_per_image_min, config.targets_per_image_max + 1))
+                sample_homography_params = _scaled_homography_params_for_target_count(
+                    base=homography_params,
+                    n_targets=n_targets,
+                    config=config,
+                )
                 composited = background.copy()
                 occupancy_mask = np.zeros((bg_h, bg_w), dtype=bool)
                 placed: list[PlacedTarget] = []
@@ -194,7 +227,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                             target=target,
                             target_image=target_image,
                             occupancy_mask=occupancy_mask,
-                            homography_params=homography_params,
+                            homography_params=sample_homography_params,
                             rng=rng,
                             config=config,
                         )

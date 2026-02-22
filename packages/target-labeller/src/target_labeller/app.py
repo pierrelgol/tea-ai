@@ -19,7 +19,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .io import discover_images, ensure_class_id, load_classes, load_yolo_label, save_yolo_label
+from .io import (
+    discover_images,
+    ensure_class_id,
+    load_classes,
+    load_yolo_label,
+    save_yolo_label,
+)
 from .widgets import ImageCanvas
 
 
@@ -129,11 +135,15 @@ class LabelerWindow(QMainWindow):
         image_path = self._current_image()
         pixmap = QPixmap(str(image_path))
         if pixmap.isNull():
-            QMessageBox.warning(self, "Image Error", f"Failed to load image: {image_path}")
+            QMessageBox.warning(
+                self, "Image Error", f"Failed to load image: {image_path}"
+            )
             return
 
         self.canvas.set_image(pixmap)
-        self.image_info.setText(f"{self.index + 1}/{len(self.images)} - {image_path.name}")
+        self.image_info.setText(
+            f"{self.index + 1}/{len(self.images)} - {image_path.name}"
+        )
 
         label_data = load_yolo_label(self._label_file_for(image_path))
         if label_data is None:
@@ -153,17 +163,24 @@ class LabelerWindow(QMainWindow):
     def save_current(self) -> None:
         class_name = self.class_input.text().strip()
         if not class_name:
-            QMessageBox.warning(self, "Missing Class", "Please set a class name before saving.")
+            QMessageBox.warning(
+                self, "Missing Class", "Please set a class name before saving."
+            )
             return
 
         yolo_box = self.canvas.pixel_box_to_yolo()
         if yolo_box is None or yolo_box.width <= 0 or yolo_box.height <= 0:
-            QMessageBox.warning(self, "Missing Box", "Please draw a bounding box before saving.")
+            QMessageBox.warning(
+                self, "Missing Box", "Please draw a bounding box before saving."
+            )
             return
 
         class_id = ensure_class_id(self.classes_file, class_name)
-        save_yolo_label(self._label_file_for(self._current_image()), class_id, yolo_box)
+        image_path = self._current_image()
+        label_path = self._label_file_for(image_path)
+        save_yolo_label(label_path, class_id, yolo_box)
         self._reload_class_picker()
+        self._export_single_target(image_path, label_path)
 
     def prev_image(self) -> None:
         if self.index <= 0:
@@ -181,7 +198,9 @@ class LabelerWindow(QMainWindow):
         try:
             exported_count = self._export_targets_structure()
         except Exception as exc:
-            QMessageBox.critical(self, "Export Error", f"Failed to export targets structure:\n{exc}")
+            QMessageBox.critical(
+                self, "Export Error", f"Failed to export targets structure:\n{exc}"
+            )
             return
 
         QMessageBox.information(
@@ -195,13 +214,25 @@ class LabelerWindow(QMainWindow):
         )
         self.close()
 
+    def _export_single_target(self, image_path: Path, label_path: Path) -> None:
+        """Export a single labeled image immediately to the dataset/targets structure."""
+        export_images_dir = self.export_root / "images"
+        export_labels_dir = self.export_root / "labels"
+        export_images_dir.mkdir(parents=True, exist_ok=True)
+        export_labels_dir.mkdir(parents=True, exist_ok=True)
+
+        target_image = export_images_dir / image_path.name
+        target_label = export_labels_dir / f"{image_path.stem}.txt"
+        shutil.copy2(image_path, target_image)
+        target_label.write_text(
+            label_path.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+
     def _export_targets_structure(self) -> int:
         export_images_dir = self.export_root / "images"
         export_labels_dir = self.export_root / "labels"
         if export_images_dir.exists():
             shutil.rmtree(export_images_dir)
-        if export_labels_dir.exists():
-            shutil.rmtree(export_labels_dir)
         export_images_dir.mkdir(parents=True, exist_ok=True)
         export_labels_dir.mkdir(parents=True, exist_ok=True)
 
@@ -209,7 +240,7 @@ class LabelerWindow(QMainWindow):
 
         for image_path in self.images:
             source_label = self._label_file_for(image_path)
-            if source_label is None:
+            if not source_label.exists():
                 continue
             label_data = load_yolo_label(source_label)
             if label_data is None:
@@ -218,13 +249,22 @@ class LabelerWindow(QMainWindow):
             target_image = export_images_dir / image_path.name
             target_label = export_labels_dir / f"{image_path.stem}.txt"
             shutil.copy2(image_path, target_image)
-            target_label.write_text(source_label.read_text(encoding="utf-8"), encoding="utf-8")
+            if source_label.resolve() != target_label.resolve():
+                target_label.write_text(
+                    source_label.read_text(encoding="utf-8"), encoding="utf-8"
+                )
             exported_count += 1
 
         return exported_count
 
 
-def run_app(images_dir: Path, labels_dir: Path, classes_file: Path, export_root: Path, exts: list[str]) -> None:
+def run_app(
+    images_dir: Path,
+    labels_dir: Path,
+    classes_file: Path,
+    export_root: Path,
+    exts: list[str],
+) -> None:
     app = QApplication(sys.argv)
     window = LabelerWindow(
         images_dir=images_dir,

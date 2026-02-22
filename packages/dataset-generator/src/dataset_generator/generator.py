@@ -13,6 +13,7 @@ from .homography import HomographyParams, sample_valid_homography
 from .io import (
     CanonicalTarget,
     audit_background_split_overlap,
+    enforce_disjoint_background_splits,
     load_backgrounds_by_split,
     load_canonical_targets,
     load_target_classes,
@@ -118,13 +119,33 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
     )
     target_classes = load_target_classes(config.target_classes_file)
     backgrounds_by_split = load_backgrounds_by_split(config.background_splits)
-    split_audit = audit_background_split_overlap(backgrounds_by_split)
+    original_audit = audit_background_split_overlap(backgrounds_by_split)
+    if original_audit.get("overlap_count", 0) > 0:
+        backgrounds_by_split, enforced_audit = enforce_disjoint_background_splits(backgrounds_by_split)
+        split_audit = {
+            "enforced": True,
+            "original": original_audit,
+            "post_enforcement": enforced_audit,
+            "overlap_count": int(enforced_audit.get("overlap_count", 0)),
+        }
+    else:
+        split_audit = {
+            "enforced": False,
+            "original": original_audit,
+            "post_enforcement": {
+                "original_train_count": len(backgrounds_by_split.get("train", [])),
+                "original_val_count": len(backgrounds_by_split.get("val", [])),
+                "original_overlap_count": 0,
+                "reassigned_overlap_to_train_count": 0,
+                "reassigned_overlap_to_val_count": 0,
+                "final_train_count": len(backgrounds_by_split.get("train", [])),
+                "final_val_count": len(backgrounds_by_split.get("val", [])),
+                "policy": "none_required",
+                "overlap_count": 0,
+            },
+            "overlap_count": 0,
+        }
     write_metadata(config.output_root / "split_audit.json", split_audit)
-    if split_audit.get("overlap_count", 0) > 0:
-        raise ValueError(
-            "train/val background splits are not disjoint by content hash; "
-            f"found {split_audit['overlap_count']} duplicate source images"
-        )
     target_images_cache: dict[str, np.ndarray] = {}
 
     _ensure_output_layout(config.output_root)
@@ -216,7 +237,6 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                 metadata = {
                     "seed": config.seed,
                     "generator_version": config.generator_version,
-                    "complexity_profile": config.complexity_profile,
                     "background_dataset_name": config.background_dataset_name,
                     "background_image": str(bg_path),
                     "num_targets": len(placed),

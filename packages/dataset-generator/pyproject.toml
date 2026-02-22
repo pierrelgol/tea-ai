@@ -15,7 +15,6 @@ dependencies = [
 
 [project.scripts]
 dataset-generator = "dataset_generator.cli:main"
-dataset-generator-gate = "dataset_generator.gate:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dataset_generator"]

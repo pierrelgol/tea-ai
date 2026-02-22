@@ -1,12 +1,13 @@
 # detector-train
 
-Focused training module.
+Lean detector training pipeline.
 
 Responsibilities:
 - Write `data.yaml`
-- Launch YOLO training
-- Save weights + metrics
-- Log to W&B (fail-open, auto offline fallback)
+- Train YOLO OBB with fixed tuned defaults
+- Save weights + summaries
+- Log to W&B (auto online/offline fallback)
+- Run periodic evaluator checks
 
 ## Run
 
@@ -14,17 +15,8 @@ Responsibilities:
 uv run detector-train --dataset coco8 --datasets-base-root dataset/augmented --artifacts-root artifacts/detector-train
 ```
 
-For cleaner live monitoring in W&B:
+Or pass a direct dataset root:
 
 ```bash
-uv run detector-train --wandb-log-profile core+diag --wandb-log-every-epoch
-```
-
-Hyperparameter knobs can be tuned directly from CLI (examples: `--optimizer AdamW --lr0 0.002 --cos-lr --degrees 2 --scale 0.4`).
-Default training now uses `--train-profile obb_precision_v2`, which applies tuned optimizer and OBB geometry-preserving augment defaults.
-
-Optimization loop (train->grade->compare, with W&B online enforced):
-
-```bash
-uv run detector-train-optimize --dataset coco128 --baseline-file baseline.txt
+uv run detector-train --dataset-root dataset/augmented/coco8 --artifacts-root artifacts/detector-train
 ```

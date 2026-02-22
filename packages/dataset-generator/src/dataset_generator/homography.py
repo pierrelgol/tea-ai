@@ -54,6 +54,11 @@ def sample_valid_homography(
         margin_x: float,
         margin_y: float,
     ) -> tuple[float, float]:
+        def _u(low: float, high: float) -> float:
+            if high <= low:
+                return float(low)
+            return float(rng.uniform(low, high))
+
         cx0 = background_w * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_w
         cy0 = background_h * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_h
         if rng.random() >= params.edge_bias_prob:
@@ -66,17 +71,17 @@ def sample_valid_homography(
         band_y = max(margin_y, params.edge_band_frac * background_h)
         edge = int(rng.integers(0, 4))
         if edge == 0:
-            cx = float(rng.uniform(margin_x, min(background_w - margin_x, band_x)))
-            cy = float(rng.uniform(margin_y, background_h - margin_y))
+            cx = _u(margin_x, min(background_w - margin_x, band_x))
+            cy = _u(margin_y, background_h - margin_y)
         elif edge == 1:
-            cx = float(rng.uniform(max(margin_x, background_w - band_x), background_w - margin_x))
-            cy = float(rng.uniform(margin_y, background_h - margin_y))
+            cx = _u(max(margin_x, background_w - band_x), background_w - margin_x)
+            cy = _u(margin_y, background_h - margin_y)
         elif edge == 2:
-            cx = float(rng.uniform(margin_x, background_w - margin_x))
-            cy = float(rng.uniform(margin_y, min(background_h - margin_y, band_y)))
+            cx = _u(margin_x, background_w - margin_x)
+            cy = _u(margin_y, min(background_h - margin_y, band_y))
         else:
-            cx = float(rng.uniform(margin_x, background_w - margin_x))
-            cy = float(rng.uniform(max(margin_y, background_h - band_y), background_h - margin_y))
+            cx = _u(margin_x, background_w - margin_x)
+            cy = _u(max(margin_y, background_h - band_y), background_h - margin_y)
         return (
             float(np.clip(cx, margin_x, background_w - margin_x)),
             float(np.clip(cy, margin_y, background_h - margin_y)),

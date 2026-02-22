@@ -29,7 +29,6 @@ def _resolve_device(requested: str) -> str:
 
 
 def _json_safe(obj):
-    """Convert objects (e.g. Path) into JSON-serializable primitives."""
     return json.loads(json.dumps(obj, default=str))
 
 
@@ -38,7 +37,7 @@ def _to_float(value: Any) -> float | None:
         out = float(value)
     except Exception:
         return None
-    if out != out:  # NaN
+    if out != out:
         return None
     if out in (float("inf"), float("-inf")):
         return None
@@ -80,14 +79,7 @@ def _canonical_key(raw_key: str) -> str | None:
     return None
 
 
-def _drop_non_profile_metrics(payload: dict[str, float], profile: str) -> dict[str, float]:
-    if profile == "core+diag":
-        return payload
-    diag_keys = {"train/speed_ms_per_img", "train/num_instances"}
-    return {k: v for k, v in payload.items() if k not in diag_keys}
-
-
-def _extract_epoch_metrics(trainer, profile: str) -> dict[str, float]:
+def _extract_epoch_metrics(trainer) -> dict[str, float]:
     out: dict[str, float] = {}
 
     metrics = getattr(trainer, "metrics", None)
@@ -139,10 +131,10 @@ def _extract_epoch_metrics(trainer, profile: str) -> dict[str, float]:
     if losses:
         out["train/loss_total"] = float(sum(losses))
 
-    return _drop_non_profile_metrics(out, profile)
+    return out
 
 
-def _extract_last_metrics(results_csv: Path, profile: str) -> dict[str, float]:
+def _extract_last_metrics(results_csv: Path) -> dict[str, float]:
     if not results_csv.exists():
         return {}
 
@@ -179,48 +171,7 @@ def _extract_last_metrics(results_csv: Path, profile: str) -> dict[str, float]:
     if losses:
         out["train/loss_total"] = float(sum(losses))
 
-    return _drop_non_profile_metrics(out, profile)
-
-
-def _apply_train_profile_defaults(config: TrainConfig) -> dict[str, Any]:
-    if config.train_profile == "default":
-        return {}
-    if config.train_profile == "obb_precision_v1":
-        # OBB profile tuned to preserve geometry and reduce localization distortion.
-        return {
-            "close_mosaic": 10,
-            "mosaic": 0.60,
-            "mixup": 0.0,
-            "degrees": 2.0,
-            "translate": 0.08,
-            "scale": 0.40,
-            "shear": 0.0,
-            "perspective": 0.0,
-            "hsv_h": 0.010,
-            "hsv_s": 0.40,
-            "hsv_v": 0.30,
-        }
-    if config.train_profile == "obb_precision_v2":
-        # Balanced profile for complex synthetic scenes: stronger optimizer + gentler geometry jitter.
-        return {
-            "optimizer": "AdamW",
-            "lr0": 0.002,
-            "lrf": 0.01,
-            "weight_decay": 0.0005,
-            "cos_lr": True,
-            "close_mosaic": 20,
-            "mosaic": 0.45,
-            "mixup": 0.0,
-            "degrees": 1.5,
-            "translate": 0.06,
-            "scale": 0.35,
-            "shear": 0.0,
-            "perspective": 0.0,
-            "hsv_h": 0.010,
-            "hsv_s": 0.35,
-            "hsv_v": 0.25,
-        }
-    raise ValueError(f"unsupported train profile: {config.train_profile}")
+    return out
 
 
 def _run_periodic_eval(
@@ -322,7 +273,6 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "seed": config.seed,
         "workers": config.workers,
         "patience": config.patience,
-        "train_profile": config.train_profile,
         "optimizer": config.optimizer,
         "lr0": config.lr0,
         "lrf": config.lrf,
@@ -346,7 +296,6 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "multi_scale": config.multi_scale,
         "freeze": config.freeze,
         "classes_count": len(names),
-        "wandb_log_profile": config.wandb_log_profile,
         "wandb_log_every_epoch": config.wandb_log_every_epoch,
         "wandb_log_system_metrics": config.wandb_log_system_metrics,
     }
@@ -390,8 +339,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                 return
 
             if config.wandb_log_every_epoch:
-                epoch_metrics = _extract_epoch_metrics(trainer, config.wandb_log_profile)
-                _log_step_payload(current_epoch, epoch_metrics)
+                _log_step_payload(current_epoch, _extract_epoch_metrics(trainer))
 
             if not config.eval_enabled:
                 return
@@ -439,14 +387,11 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             "patience": config.patience,
             "exist_ok": True,
             "optimizer": config.optimizer,
-            "cos_lr": config.cos_lr,
-            "multi_scale": config.multi_scale,
-        }
-        optional_train_kwargs = {
             "lr0": config.lr0,
             "lrf": config.lrf,
             "weight_decay": config.weight_decay,
             "warmup_epochs": config.warmup_epochs,
+            "cos_lr": config.cos_lr,
             "close_mosaic": config.close_mosaic,
             "mosaic": config.mosaic,
             "mixup": config.mixup,
@@ -461,14 +406,9 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             "fliplr": config.fliplr,
             "flipud": config.flipud,
             "copy_paste": config.copy_paste,
+            "multi_scale": config.multi_scale,
             "freeze": config.freeze,
         }
-        profile_defaults = _apply_train_profile_defaults(config)
-        for key, value in profile_defaults.items():
-            train_kwargs[key] = value
-        for key, value in optional_train_kwargs.items():
-            if value is not None:
-                train_kwargs[key] = value
 
         train_result = model.train(
             **train_kwargs,
@@ -480,7 +420,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         last_weights = weights_dir / "last.pt"
         results_csv = save_dir / "results.csv"
 
-        metrics = _extract_last_metrics(results_csv, config.wandb_log_profile)
+        metrics = _extract_last_metrics(results_csv)
         if metrics:
             final_payload = {f"final/{k.replace('/', '_')}": v for k, v in metrics.items()}
             _log_step_payload(config.epochs, final_payload)
@@ -500,14 +440,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             "resolved_device": device,
             "periodic_eval": periodic_eval,
         }
-    except Exception as exc:
-        summary = {
-            "status": "error",
-            "config": _json_safe(asdict(config)),
-            "wandb": asdict(wandb_state),
-            "resolved_device": device,
-            "error": str(exc),
-        }
+    except Exception:
         raise
     finally:
         finish_wandb(wandb_run)

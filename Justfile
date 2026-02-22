@@ -57,36 +57,11 @@ generate-augmented: venv
     @uv sync --all-packages
     @uv run dataset-generator --dataset {{dataset}} --dataset-root dataset
 
-generate-augmented-robust OUT_ROOT='dataset/augmented_v2/{{dataset}}': venv
-    @uv sync --all-packages
-    @uv run dataset-generator \
-      --dataset {{dataset}} \
-      --dataset-root dataset \
-      --output-root {{OUT_ROOT}} \
-      --complexity-profile obb_robust_v1 \
-      --targets-per-image-min 2 \
-      --targets-per-image-max 4 \
-      --max-occlusion-ratio 0.45 \
-      --allow-partial-visibility \
-      --blur-prob 0.35 \
-      --motion-blur-prob 0.20 \
-      --noise-prob 0.25 \
-      --jpeg-artifact-prob 0.20 \
-      --color-jitter-prob 0.50
-
-generate-augmented-hard OUT_ROOT='dataset/augmented_v3/{{dataset}}': venv
-    @uv sync --all-packages
-    @uv run dataset-generator \
-      --dataset {{dataset}} \
-      --dataset-root dataset \
-      --output-root {{OUT_ROOT}} \
-      --complexity-profile obb_robust_v2_hard
-
 check-augmented: venv
     @uv sync --all-packages
     @uv run augment-checker --dataset {{dataset}} --datasets-base-root dataset/augmented
 
-check-augmented-root DATASET_ROOT='dataset/augmented_v2/{{dataset}}': venv
+check-augmented-root DATASET_ROOT='dataset/augmented/{{dataset}}': venv
     @uv sync --all-packages
     @uv run augment-checker --dataset-root {{DATASET_ROOT}} --no-gui
 
@@ -98,13 +73,9 @@ train-detector: venv
     @uv sync --all-packages
     @uv run detector-train --dataset {{dataset}} --datasets-base-root dataset/augmented --artifacts-root artifacts/detector-train
 
-train-detector-root DATASET_ROOT='dataset/augmented_v2/{{dataset}}': venv
+train-detector-root DATASET_ROOT='dataset/augmented/{{dataset}}': venv
     @uv sync --all-packages
-    @uv run detector-train --dataset-root {{DATASET_ROOT}} --artifacts-root artifacts/detector-train --wandb --wandb-mode online
-
-optimize-detector: venv
-    @uv sync --all-packages
-    @uv run detector-train-optimize --dataset {{dataset}} --datasets-base-root dataset/augmented --artifacts-root artifacts/detector-train --predictions-root predictions --baseline-file baseline.txt
+    @uv run detector-train --dataset-root {{DATASET_ROOT}} --artifacts-root artifacts/detector-train
 
 infer-detector WEIGHTS MODEL: venv
     @uv sync --all-packages
@@ -118,25 +89,6 @@ grade-detector MODEL='latest': venv
     @uv sync --all-packages
     @uv run detector-grader --dataset {{dataset}} --datasets-base-root dataset/augmented --predictions-root predictions --model {{MODEL}}
 
-grade-detector-root DATASET_ROOT='dataset/augmented_v2/{{dataset}}' MODEL='latest': venv
+grade-detector-root DATASET_ROOT='dataset/augmented/{{dataset}}' MODEL='latest': venv
     @uv sync --all-packages
     @uv run detector-grader --dataset-root {{DATASET_ROOT}} --predictions-root predictions --artifacts-root artifacts/detector-train --model {{MODEL}}
-
-quality-gate GRADE_REPORT DATASET_ROOT='dataset/augmented_v2/{{dataset}}' MIN_RUN_GRADE='': venv
-    @uv sync --all-packages
-    @if [[ -n "{{MIN_RUN_GRADE}}" ]]; then \
-      uv run dataset-generator-gate \
-        --integrity-report {{DATASET_ROOT}}/reports/integrity_report.json \
-        --geometry-report {{DATASET_ROOT}}/reports/geometry_report.json \
-        --split-audit {{DATASET_ROOT}}/split_audit.json \
-        --grade-report {{GRADE_REPORT}} \
-        --max-geometry-outlier-rate 0.005 \
-        --min-run-grade {{MIN_RUN_GRADE}}; \
-    else \
-      uv run dataset-generator-gate \
-        --integrity-report {{DATASET_ROOT}}/reports/integrity_report.json \
-        --geometry-report {{DATASET_ROOT}}/reports/geometry_report.json \
-        --split-audit {{DATASET_ROOT}}/split_audit.json \
-        --grade-report {{GRADE_REPORT}} \
-        --max-geometry-outlier-rate 0.005; \
-    fi

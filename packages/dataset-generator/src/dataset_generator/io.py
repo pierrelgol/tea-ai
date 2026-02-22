@@ -136,6 +136,43 @@ def audit_background_split_overlap(backgrounds_by_split: dict[str, list[Path]]) 
     }
 
 
+def enforce_disjoint_background_splits(backgrounds_by_split: dict[str, list[Path]]) -> tuple[dict[str, list[Path]], dict]:
+    train_hashes = {_sha1_file(p): p for p in backgrounds_by_split.get("train", [])}
+    val_hashes = {_sha1_file(p): p for p in backgrounds_by_split.get("val", [])}
+    overlap_hashes = sorted(set(train_hashes) & set(val_hashes))
+
+    reassigned_train: list[str] = []
+    reassigned_val: list[str] = []
+    out_train: list[Path] = [p for h, p in train_hashes.items() if h not in overlap_hashes]
+    out_val: list[Path] = [p for h, p in val_hashes.items() if h not in overlap_hashes]
+
+    for h in overlap_hashes:
+        # Deterministic 80/20 split assignment for duplicate content.
+        assign_to_val = (int(h[:8], 16) % 5) == 0
+        chosen = val_hashes[h] if assign_to_val else train_hashes[h]
+        if assign_to_val:
+            out_val.append(chosen)
+            reassigned_val.append(str(chosen))
+        else:
+            out_train.append(chosen)
+            reassigned_train.append(str(chosen))
+
+    out_train = sorted(out_train)
+    out_val = sorted(out_val)
+    audit = {
+        "original_train_count": len(backgrounds_by_split.get("train", [])),
+        "original_val_count": len(backgrounds_by_split.get("val", [])),
+        "original_overlap_count": len(overlap_hashes),
+        "reassigned_overlap_to_train_count": len(reassigned_train),
+        "reassigned_overlap_to_val_count": len(reassigned_val),
+        "final_train_count": len(out_train),
+        "final_val_count": len(out_val),
+        "policy": "deterministic_hash_repartition_80_20",
+        "overlap_count": 0,
+    }
+    return {"train": out_train, "val": out_val}, audit
+
+
 def _format_yolo_obb_line(class_id: int, obb_norm: np.ndarray) -> str:
     flat = obb_norm.reshape(-1)
     coords = " ".join(f"{float(v):.10f}" for v in flat)

@@ -21,43 +21,42 @@ class GeneratorConfig:
 
     samples_per_background: int = 1
     seed: int | None = None
-    generator_version: str = "obb_robust_v1"
-    complexity_profile: str = "obb_robust_v1"
+    generator_version: str = "obb_robust_v2"
 
-    targets_per_image_min: int = 2
-    targets_per_image_max: int = 4
-    max_occlusion_ratio: float = 0.45
+    targets_per_image_min: int = 3
+    targets_per_image_max: int = 6
+    max_occlusion_ratio: float = 0.60
     allow_partial_visibility: bool = True
 
-    scale_min: float = 0.4
-    scale_max: float = 1.2
-    translate_frac: float = 0.25
-    perspective_jitter: float = 0.08
-    min_quad_area_frac: float = 0.002
+    scale_min: float = 0.25
+    scale_max: float = 1.35
+    translate_frac: float = 0.35
+    perspective_jitter: float = 0.12
+    min_quad_area_frac: float = 0.0015
     max_attempts: int = 50
-    edge_bias_prob: float = 0.10
-    edge_band_frac: float = 0.18
+    edge_bias_prob: float = 0.40
+    edge_band_frac: float = 0.22
 
     class_offset_base: int = 80
-    blur_prob: float = 0.35
-    motion_blur_prob: float = 0.20
-    noise_prob: float = 0.25
-    jpeg_artifact_prob: float = 0.20
-    color_jitter_prob: float = 0.50
-    color_hue_shift_max_deg: float = 8.0
-    color_sat_gain_min: float = 0.75
-    color_sat_gain_max: float = 1.25
-    color_val_gain_min: float = 0.75
-    color_val_gain_max: float = 1.25
-    gaussian_blur_kernel_min: int = 3
-    gaussian_blur_kernel_max: int = 9
-    motion_blur_kernel_min: int = 5
-    motion_blur_kernel_max: int = 15
-    motion_blur_angle_max_deg: float = 30.0
-    noise_sigma_min: float = 3.0
-    noise_sigma_max: float = 14.0
-    jpeg_quality_min: int = 40
-    jpeg_quality_max: int = 85
+    blur_prob: float = 0.55
+    motion_blur_prob: float = 0.35
+    noise_prob: float = 0.45
+    jpeg_artifact_prob: float = 0.35
+    color_jitter_prob: float = 0.75
+    color_hue_shift_max_deg: float = 14.0
+    color_sat_gain_min: float = 0.60
+    color_sat_gain_max: float = 1.45
+    color_val_gain_min: float = 0.60
+    color_val_gain_max: float = 1.40
+    gaussian_blur_kernel_min: int = 5
+    gaussian_blur_kernel_max: int = 11
+    motion_blur_kernel_min: int = 7
+    motion_blur_kernel_max: int = 19
+    motion_blur_angle_max_deg: float = 45.0
+    noise_sigma_min: float = 5.0
+    noise_sigma_max: float = 20.0
+    jpeg_quality_min: int = 25
+    jpeg_quality_max: int = 75
 
     def validate(self) -> None:
         if self.samples_per_background < 1:

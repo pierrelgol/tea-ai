@@ -111,6 +111,8 @@ def main() -> None:
     parser.add_argument("--device", default="auto")
     parser.add_argument("--conf-threshold", type=float, default=0.25, help="Confidence threshold for infer + grading")
     parser.add_argument("--infer-iou-threshold", type=float, default=0.7)
+    parser.add_argument("--infer-tta", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--infer-agnostic-nms", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--match-iou-threshold", type=float, default=0.5)
     parser.add_argument("--weights-json", type=Path, default=None, help="Scoring weight profile JSON")
     parser.add_argument("--reports-dir", type=Path, default=None)
@@ -148,6 +150,8 @@ def main() -> None:
             device=args.device,
             conf_threshold=args.conf_threshold,
             infer_iou_threshold=args.infer_iou_threshold,
+            use_tta=args.infer_tta,
+            agnostic_nms=args.infer_agnostic_nms,
             seed=args.seed,
         )
     else:
@@ -255,6 +259,8 @@ def main() -> None:
         "splits": splits,
         "conf_threshold": args.conf_threshold,
         "infer_iou_threshold": args.infer_iou_threshold,
+        "infer_tta": args.infer_tta,
+        "infer_agnostic_nms": args.infer_agnostic_nms,
         "match_iou_threshold": args.match_iou_threshold,
         "weights_profile": {
             "iou": weights_profile.iou,

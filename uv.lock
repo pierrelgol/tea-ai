@@ -14,6 +14,7 @@ members = [
     "dataset-generator",
     "detector-evaluator",
     "detector-infer",
+    "detector-reviewer",
     "detector-train",
     "target-labeller",
     "tea-ai",
@@ -277,6 +278,25 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=2.1.0" },
+    { name = "ultralytics", specifier = ">=8.3.0" },
+]
+
+[[package]]
+name = "detector-reviewer"
+version = "0.1.0"
+source = { editable = "packages/detector-reviewer" }
+dependencies = [
+    { name = "numpy" },
+    { name = "opencv-python-headless" },
+    { name = "pyside6" },
+    { name = "ultralytics" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.1.0" },
+    { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
+    { name = "pyside6", specifier = ">=6.7.0" },
     { name = "ultralytics", specifier = ">=8.3.0" },
 ]
 
@@ -1365,6 +1385,7 @@ dependencies = [
     { name = "dataset-generator" },
     { name = "detector-evaluator" },
     { name = "detector-infer" },
+    { name = "detector-reviewer" },
     { name = "detector-train" },
     { name = "target-labeller" },
 ]
@@ -1376,6 +1397,7 @@ requires-dist = [
     { name = "dataset-generator", editable = "packages/dataset-generator" },
     { name = "detector-evaluator", editable = "packages/detector-evaluator" },
     { name = "detector-infer", editable = "packages/detector-infer" },
+    { name = "detector-reviewer", editable = "packages/detector-reviewer" },
     { name = "detector-train", editable = "packages/detector-train" },
     { name = "target-labeller", editable = "packages/target-labeller" },
 ]

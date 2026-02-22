@@ -64,3 +64,7 @@ train-detector: venv
 infer-detector WEIGHTS MODEL: venv
     @uv sync --all-packages
     @uv run detector-infer --weights {{WEIGHTS}} --model-name {{MODEL}} --dataset {{dataset}} --datasets-base-root dataset/augmented --output-root predictions
+
+review-detector: venv
+    @uv sync --all-packages
+    @uv run detector-reviewer --dataset {{dataset}} --datasets-base-root dataset/augmented

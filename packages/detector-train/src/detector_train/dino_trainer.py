@@ -4,8 +4,10 @@ import types
 from dataclasses import dataclass
 from pathlib import Path
 
+import cv2
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from ultralytics.models.yolo.obb.train import OBBTrainer
 from ultralytics.utils import ops
@@ -17,7 +19,10 @@ from dinov3_bridge import DinoV3Teacher, resolve_local_dinov3_root
 @dataclass(frozen=True, slots=True)
 class DinoDistillConfig:
     dino_root: Path
-    weight: float
+    stage_a_epochs: int
+    stage_a_freeze: int
+    stage_a_weight: float
+    stage_b_weight: float
     warmup_epochs: int
     student_layers: tuple[int, ...]
     channels: int
@@ -45,7 +50,10 @@ class DinoOBBTrainer(OBBTrainer):
             resolve_local_dinov3_root(self._dino_cfg.dino_root),
             device=self.device,
         )
-        self._dino_base_weight = max(0.0, float(self._dino_cfg.weight))
+        self._dino_stage_a_epochs = max(0, int(self._dino_cfg.stage_a_epochs))
+        self._dino_stage_a_freeze = max(0, int(self._dino_cfg.stage_a_freeze))
+        self._dino_stage_a_weight = max(0.0, float(self._dino_cfg.stage_a_weight))
+        self._dino_stage_b_weight = max(0.0, float(self._dino_cfg.stage_b_weight))
         self._dino_warmup_epochs = max(0, int(self._dino_cfg.warmup_epochs))
         self._dino_active_weight = 0.0
         self._dino_last_weight = 0.0
@@ -54,6 +62,8 @@ class DinoOBBTrainer(OBBTrainer):
         self._dino_epoch_loss = 0.0
         self._dino_epoch_obj_loss = 0.0
         self._dino_epoch_bg_loss = 0.0
+        self._dino_stage_a_active = self._dino_stage_a_epochs > 0 and self._dino_stage_a_freeze > 0
+        self._dino_stage_a_prefixes = tuple(f"model.{i}." for i in range(self._dino_stage_a_freeze))
 
         layer_count = len(getattr(model, "model", []))
         if layer_count <= 0:
@@ -99,41 +109,21 @@ class DinoOBBTrainer(OBBTrainer):
             boxes_px[:, 2] = boxes_px[:, 2].clamp(0.0, 1.0) * w
             boxes_px[:, 3] = boxes_px[:, 3].clamp(0.0, 1.0) * h
             polys = ops.xywhr2xyxyxyxy(boxes_px).detach().cpu().numpy()
-
-            try:
-                import cv2  # type: ignore
-
-                for bi in range(mask.shape[0]):
-                    idxs = (batch_idx == bi).nonzero(as_tuple=False).view(-1).detach().cpu().numpy()
-                    if idxs.size == 0:
-                        continue
-                    canvas = np.zeros((h, w), dtype=np.uint8)
-                    pts: list[np.ndarray] = []
-                    for i in idxs.tolist():
-                        poly = np.round(polys[i]).astype(np.int32).reshape(-1, 2)
-                        poly[:, 0] = np.clip(poly[:, 0], 0, max(0, w - 1))
-                        poly[:, 1] = np.clip(poly[:, 1], 0, max(0, h - 1))
-                        if poly.shape[0] == 4:
-                            pts.append(poly)
-                    if pts:
-                        cv2.fillPoly(canvas, pts, color=1)
-                        mask[bi, 0] = torch.from_numpy(canvas).to(device=device, dtype=mask.dtype)
-            except Exception:
-                # Fallback to axis-aligned region when polygon rasterization is unavailable.
-                cx = boxes[:, 0].clamp(0.0, 1.0)
-                cy = boxes[:, 1].clamp(0.0, 1.0)
-                bw = boxes[:, 2].clamp(0.0, 1.0)
-                bh = boxes[:, 3].clamp(0.0, 1.0)
-                x1 = ((cx - bw * 0.5) * w).floor().to(torch.long).clamp(0, max(0, w - 1))
-                x2 = ((cx + bw * 0.5) * w).ceil().to(torch.long).clamp(1, w)
-                y1 = ((cy - bh * 0.5) * h).floor().to(torch.long).clamp(0, max(0, h - 1))
-                y2 = ((cy + bh * 0.5) * h).ceil().to(torch.long).clamp(1, h)
-                for i in range(int(boxes.shape[0])):
-                    bi = int(batch_idx[i].item())
-                    xa, xb = int(x1[i].item()), int(x2[i].item())
-                    ya, yb = int(y1[i].item()), int(y2[i].item())
-                    if xa < xb and ya < yb and 0 <= bi < mask.shape[0]:
-                        mask[bi, 0, ya:yb, xa:xb] = 1.0
+            for bi in range(mask.shape[0]):
+                idxs = (batch_idx == bi).nonzero(as_tuple=False).view(-1).detach().cpu().numpy()
+                if idxs.size == 0:
+                    continue
+                canvas = np.zeros((h, w), dtype=np.uint8)
+                pts: list[np.ndarray] = []
+                for i in idxs.tolist():
+                    poly = np.round(polys[i]).astype(np.int32).reshape(-1, 2)
+                    poly[:, 0] = np.clip(poly[:, 0], 0, max(0, w - 1))
+                    poly[:, 1] = np.clip(poly[:, 1], 0, max(0, h - 1))
+                    if poly.shape[0] == 4:
+                        pts.append(poly)
+                if pts:
+                    cv2.fillPoly(canvas, pts, color=1)
+                    mask[bi, 0] = torch.from_numpy(canvas).to(device=device, dtype=mask.dtype)
             return mask
 
         def _compute_distill_loss(batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -220,15 +210,37 @@ class DinoOBBTrainer(OBBTrainer):
             cb_trainer._dino_epoch_obj_loss = 0.0
             cb_trainer._dino_epoch_bg_loss = 0.0
 
+            epoch_idx = int(getattr(cb_trainer, "epoch", 0))
+            in_stage_a = epoch_idx < cb_trainer._dino_stage_a_epochs
+            cb_trainer._dino_stage_a_active = (
+                in_stage_a and cb_trainer._dino_stage_a_epochs > 0 and cb_trainer._dino_stage_a_freeze > 0
+            )
             warmup = cb_trainer._dino_warmup_epochs
             if warmup <= 0:
                 weight_scale = 1.0
             else:
-                epoch_idx = int(getattr(cb_trainer, "epoch", 0)) + 1
-                weight_scale = min(1.0, float(epoch_idx) / float(warmup))
-            cb_trainer._dino_active_weight = cb_trainer._dino_base_weight * weight_scale
+                weight_scale = min(1.0, float(epoch_idx + 1) / float(warmup))
+            base_weight = cb_trainer._dino_stage_a_weight if in_stage_a else cb_trainer._dino_stage_b_weight
+            cb_trainer._dino_active_weight = base_weight * weight_scale
+
+            if cb_trainer._dino_stage_a_active and cb_trainer._dino_stage_a_prefixes:
+                base_model = unwrap_model(cb_trainer.model)
+                for name, module in base_model.named_modules():
+                    if any(name.startswith(pref) for pref in cb_trainer._dino_stage_a_prefixes) and isinstance(
+                        module, nn.BatchNorm2d
+                    ):
+                        module.eval()
 
         self.add_callback("on_train_epoch_start", _on_train_epoch_start)
+
+    def optimizer_step(self):
+        if getattr(self, "_dino_stage_a_active", False):
+            base_model = unwrap_model(self.model)
+            freeze_prefixes = tuple(getattr(self, "_dino_stage_a_prefixes", ()))
+            for name, param in base_model.named_parameters():
+                if any(name.startswith(pref) for pref in freeze_prefixes):
+                    param.grad = None
+        return super().optimizer_step()
 
     def __del__(self):
         hooks = getattr(self, "_dino_hooks", None)

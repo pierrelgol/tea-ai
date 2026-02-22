@@ -324,6 +324,7 @@ def main() -> None:
             workers=args.workers,
             patience=run_patience,
             save_json=True,
+            train_profile="obb_precision_v1",
             optimizer=str(overrides.get("optimizer", "auto")),
             lr0=overrides.get("lr0"),
             lrf=overrides.get("lrf"),

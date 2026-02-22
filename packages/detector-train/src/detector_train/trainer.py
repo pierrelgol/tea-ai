@@ -182,6 +182,28 @@ def _extract_last_metrics(results_csv: Path, profile: str) -> dict[str, float]:
     return _drop_non_profile_metrics(out, profile)
 
 
+def _apply_train_profile_defaults(config: TrainConfig) -> dict[str, Any]:
+    if config.train_profile == "default":
+        return {}
+    if config.train_profile != "obb_precision_v1":
+        raise ValueError(f"unsupported train profile: {config.train_profile}")
+
+    # OBB profile tuned to preserve geometry and reduce localization distortion.
+    return {
+        "close_mosaic": 10,
+        "mosaic": 0.60,
+        "mixup": 0.0,
+        "degrees": 2.0,
+        "translate": 0.08,
+        "scale": 0.40,
+        "shear": 0.0,
+        "perspective": 0.0,
+        "hsv_h": 0.010,
+        "hsv_s": 0.40,
+        "hsv_v": 0.30,
+    }
+
+
 def _run_periodic_eval(
     *,
     config: TrainConfig,
@@ -281,6 +303,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "seed": config.seed,
         "workers": config.workers,
         "patience": config.patience,
+        "train_profile": config.train_profile,
         "optimizer": config.optimizer,
         "lr0": config.lr0,
         "lrf": config.lrf,
@@ -419,6 +442,9 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             "flipud": config.flipud,
             "copy_paste": config.copy_paste,
         }
+        profile_defaults = _apply_train_profile_defaults(config)
+        for key, value in profile_defaults.items():
+            train_kwargs[key] = value
         for key, value in optional_train_kwargs.items():
             if value is not None:
                 train_kwargs[key] = value

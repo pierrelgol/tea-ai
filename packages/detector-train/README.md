@@ -21,6 +21,7 @@ uv run detector-train --wandb-log-profile core+diag --wandb-log-every-epoch
 ```
 
 Hyperparameter knobs can be tuned directly from CLI (examples: `--optimizer AdamW --lr0 0.002 --cos-lr --degrees 2 --scale 0.4`).
+Default training now uses `--train-profile obb_precision_v1`, which applies geometry-preserving OBB augment defaults.
 
 Optimization loop (train->grade->compare, with W&B online enforced):
 

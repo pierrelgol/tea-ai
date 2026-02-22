@@ -25,6 +25,7 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--patience", type=int, default=50)
     parser.add_argument("--save-json", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--train-profile", choices=["default", "obb_precision_v1"], default="obb_precision_v1")
 
     parser.add_argument("--optimizer", choices=["SGD", "AdamW", "auto"], default="auto")
     parser.add_argument("--lr0", type=float, default=None)
@@ -84,6 +85,7 @@ def main() -> None:
         workers=args.workers,
         patience=args.patience,
         save_json=args.save_json,
+        train_profile=args.train_profile,
         optimizer=args.optimizer,
         lr0=args.lr0,
         lrf=args.lrf,

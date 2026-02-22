@@ -19,6 +19,7 @@ class TrainConfig:
     workers: int
     patience: int
     save_json: bool
+    train_profile: str
 
     optimizer: str
     lr0: float | None
@@ -77,6 +78,8 @@ class TrainConfig:
             raise ValueError("workers must be >= 0")
         if self.patience < 0:
             raise ValueError("patience must be >= 0")
+        if self.train_profile not in {"default", "obb_precision_v1"}:
+            raise ValueError("train_profile must be one of: default, obb_precision_v1")
         if self.optimizer not in {"SGD", "AdamW", "auto"}:
             raise ValueError("optimizer must be one of: SGD, AdamW, auto")
         if self.lr0 is not None and self.lr0 <= 0:

@@ -25,7 +25,11 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--patience", type=int, default=50)
     parser.add_argument("--save-json", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--train-profile", choices=["default", "obb_precision_v1"], default="obb_precision_v1")
+    parser.add_argument(
+        "--train-profile",
+        choices=["default", "obb_precision_v1", "obb_precision_v2"],
+        default="obb_precision_v2",
+    )
 
     parser.add_argument("--optimizer", choices=["SGD", "AdamW", "auto"], default="auto")
     parser.add_argument("--lr0", type=float, default=None)
@@ -48,6 +52,7 @@ def main() -> None:
     parser.add_argument("--flipud", type=float, default=None)
     parser.add_argument("--copy-paste", type=float, default=None)
     parser.add_argument("--multi-scale", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--freeze", type=int, default=None, help="Number of layers to freeze during training")
 
     parser.add_argument("--wandb", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--wandb-project", default="tea-ai-detector")
@@ -107,6 +112,7 @@ def main() -> None:
         flipud=args.flipud,
         copy_paste=args.copy_paste,
         multi_scale=args.multi_scale,
+        freeze=args.freeze,
         wandb_enabled=args.wandb,
         wandb_project=args.wandb_project,
         wandb_entity=args.wandb_entity,

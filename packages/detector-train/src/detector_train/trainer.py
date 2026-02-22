@@ -185,23 +185,42 @@ def _extract_last_metrics(results_csv: Path, profile: str) -> dict[str, float]:
 def _apply_train_profile_defaults(config: TrainConfig) -> dict[str, Any]:
     if config.train_profile == "default":
         return {}
-    if config.train_profile != "obb_precision_v1":
-        raise ValueError(f"unsupported train profile: {config.train_profile}")
-
-    # OBB profile tuned to preserve geometry and reduce localization distortion.
-    return {
-        "close_mosaic": 10,
-        "mosaic": 0.60,
-        "mixup": 0.0,
-        "degrees": 2.0,
-        "translate": 0.08,
-        "scale": 0.40,
-        "shear": 0.0,
-        "perspective": 0.0,
-        "hsv_h": 0.010,
-        "hsv_s": 0.40,
-        "hsv_v": 0.30,
-    }
+    if config.train_profile == "obb_precision_v1":
+        # OBB profile tuned to preserve geometry and reduce localization distortion.
+        return {
+            "close_mosaic": 10,
+            "mosaic": 0.60,
+            "mixup": 0.0,
+            "degrees": 2.0,
+            "translate": 0.08,
+            "scale": 0.40,
+            "shear": 0.0,
+            "perspective": 0.0,
+            "hsv_h": 0.010,
+            "hsv_s": 0.40,
+            "hsv_v": 0.30,
+        }
+    if config.train_profile == "obb_precision_v2":
+        # Balanced profile for complex synthetic scenes: stronger optimizer + gentler geometry jitter.
+        return {
+            "optimizer": "AdamW",
+            "lr0": 0.002,
+            "lrf": 0.01,
+            "weight_decay": 0.0005,
+            "cos_lr": True,
+            "close_mosaic": 20,
+            "mosaic": 0.45,
+            "mixup": 0.0,
+            "degrees": 1.5,
+            "translate": 0.06,
+            "scale": 0.35,
+            "shear": 0.0,
+            "perspective": 0.0,
+            "hsv_h": 0.010,
+            "hsv_s": 0.35,
+            "hsv_v": 0.25,
+        }
+    raise ValueError(f"unsupported train profile: {config.train_profile}")
 
 
 def _run_periodic_eval(
@@ -325,6 +344,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "flipud": config.flipud,
         "copy_paste": config.copy_paste,
         "multi_scale": config.multi_scale,
+        "freeze": config.freeze,
         "classes_count": len(names),
         "wandb_log_profile": config.wandb_log_profile,
         "wandb_log_every_epoch": config.wandb_log_every_epoch,
@@ -441,6 +461,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             "fliplr": config.fliplr,
             "flipud": config.flipud,
             "copy_paste": config.copy_paste,
+            "freeze": config.freeze,
         }
         profile_defaults = _apply_train_profile_defaults(config)
         for key, value in profile_defaults.items():

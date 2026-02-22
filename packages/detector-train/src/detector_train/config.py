@@ -43,6 +43,7 @@ class TrainConfig:
     flipud: float | None
     copy_paste: float | None
     multi_scale: bool
+    freeze: int | None
 
     wandb_enabled: bool
     wandb_project: str
@@ -78,8 +79,8 @@ class TrainConfig:
             raise ValueError("workers must be >= 0")
         if self.patience < 0:
             raise ValueError("patience must be >= 0")
-        if self.train_profile not in {"default", "obb_precision_v1"}:
-            raise ValueError("train_profile must be one of: default, obb_precision_v1")
+        if self.train_profile not in {"default", "obb_precision_v1", "obb_precision_v2"}:
+            raise ValueError("train_profile must be one of: default, obb_precision_v1, obb_precision_v2")
         if self.optimizer not in {"SGD", "AdamW", "auto"}:
             raise ValueError("optimizer must be one of: SGD, AdamW, auto")
         if self.lr0 is not None and self.lr0 <= 0:
@@ -92,6 +93,8 @@ class TrainConfig:
             raise ValueError("warmup_epochs must be >= 0")
         if self.close_mosaic is not None and self.close_mosaic < 0:
             raise ValueError("close_mosaic must be >= 0")
+        if self.freeze is not None and self.freeze < 0:
+            raise ValueError("freeze must be >= 0")
         if self.wandb_mode not in {"online", "offline", "auto"}:
             raise ValueError("wandb_mode must be one of: online, offline, auto")
         if self.wandb_log_profile not in {"core", "core+diag"}:

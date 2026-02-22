@@ -13,6 +13,7 @@ members = [
     "dataset-fetcher",
     "dataset-generator",
     "detector-evaluator",
+    "detector-grader",
     "detector-infer",
     "detector-reviewer",
     "detector-train",
@@ -264,6 +265,23 @@ dependencies = [
 requires-dist = [
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
+]
+
+[[package]]
+name = "detector-grader"
+version = "0.1.0"
+source = { editable = "packages/detector-grader" }
+dependencies = [
+    { name = "numpy" },
+    { name = "opencv-python-headless" },
+    { name = "ultralytics" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.1.0" },
+    { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
+    { name = "ultralytics", specifier = ">=8.3.0" },
 ]
 
 [[package]]
@@ -1384,6 +1402,7 @@ dependencies = [
     { name = "dataset-fetcher" },
     { name = "dataset-generator" },
     { name = "detector-evaluator" },
+    { name = "detector-grader" },
     { name = "detector-infer" },
     { name = "detector-reviewer" },
     { name = "detector-train" },
@@ -1396,6 +1415,7 @@ requires-dist = [
     { name = "dataset-fetcher", editable = "packages/dataset-fetcher" },
     { name = "dataset-generator", editable = "packages/dataset-generator" },
     { name = "detector-evaluator", editable = "packages/detector-evaluator" },
+    { name = "detector-grader", editable = "packages/detector-grader" },
     { name = "detector-infer", editable = "packages/detector-infer" },
     { name = "detector-reviewer", editable = "packages/detector-reviewer" },
     { name = "detector-train", editable = "packages/detector-train" },

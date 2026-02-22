@@ -76,3 +76,7 @@ infer-detector WEIGHTS MODEL: venv
 review-detector: venv
     @uv sync --all-packages
     @uv run detector-reviewer --dataset {{dataset}} --datasets-base-root dataset/augmented
+
+grade-detector MODEL='latest': venv
+    @uv sync --all-packages
+    @uv run detector-grader --dataset {{dataset}} --datasets-base-root dataset/augmented --predictions-root predictions --model {{MODEL}}

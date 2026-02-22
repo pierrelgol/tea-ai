@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "augment-checker",
+  "detector-grader",
   "detector-reviewer",
   "detector-infer",
   "detector-train",
@@ -20,6 +21,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 augment-checker = { workspace = true }
+detector-grader = { workspace = true }
 detector-reviewer = { workspace = true }
 detector-infer = { workspace = true }
 detector-train = { workspace = true }

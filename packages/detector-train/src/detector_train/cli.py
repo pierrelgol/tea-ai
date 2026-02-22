@@ -33,6 +33,9 @@ def main() -> None:
     parser.add_argument("--wandb-tags", default="")
     parser.add_argument("--wandb-notes", default=None)
     parser.add_argument("--wandb-mode", choices=["online", "offline", "auto"], default="auto")
+    parser.add_argument("--wandb-log-profile", choices=["core", "core+diag"], default="core+diag")
+    parser.add_argument("--wandb-log-system-metrics", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--wandb-log-every-epoch", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--eval", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--eval-interval-epochs", type=int, default=5)
     parser.add_argument("--eval-iou-threshold", type=float, default=0.5)
@@ -66,6 +69,9 @@ def main() -> None:
         wandb_tags=tags,
         wandb_notes=args.wandb_notes,
         wandb_mode=args.wandb_mode,
+        wandb_log_profile=args.wandb_log_profile,
+        wandb_log_system_metrics=args.wandb_log_system_metrics,
+        wandb_log_every_epoch=args.wandb_log_every_epoch,
         eval_enabled=args.eval,
         eval_interval_epochs=args.eval_interval_epochs,
         eval_iou_threshold=args.eval_iou_threshold,

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
+from numbers import Number
 from typing import Any
 
 
@@ -27,6 +29,7 @@ def init_wandb(
     tags: list[str],
     notes: str | None,
     config: dict[str, Any],
+    log_system_metrics: bool = False,
 ):
     if not enabled:
         return None, WandbState(enabled=False, mode_used=None, run_id=None, error=None)
@@ -40,6 +43,13 @@ def init_wandb(
         "config": config,
         "reinit": "finish_previous",
     }
+    if not log_system_metrics:
+        try:
+            import wandb
+
+            init_kwargs["settings"] = wandb.Settings(_disable_stats=True)
+        except Exception:
+            pass
 
     try:
         if mode == "auto":
@@ -64,13 +74,31 @@ def init_wandb(
 def log_wandb(run, payload: dict, step: int | None = None) -> None:
     if run is None:
         return
+    clean = sanitize_payload(payload)
+    if not clean:
+        return
     try:
         if step is None:
-            run.log(payload)
+            run.log(clean)
         else:
-            run.log(payload, step=step)
+            run.log(clean, step=step)
     except Exception:
         pass
+
+
+def sanitize_payload(payload: dict[str, Any]) -> dict[str, float]:
+    clean: dict[str, float] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str) or key == "":
+            continue
+        if isinstance(value, bool):
+            clean[key] = float(int(value))
+            continue
+        if isinstance(value, Number):
+            v = float(value)
+            if math.isfinite(v):
+                clean[key] = v
+    return clean
 
 
 def finish_wandb(run) -> None:

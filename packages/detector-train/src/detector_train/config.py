@@ -27,6 +27,9 @@ class TrainConfig:
     wandb_tags: list[str]
     wandb_notes: str | None
     wandb_mode: str  # online|offline|auto
+    wandb_log_profile: str  # core|core+diag
+    wandb_log_system_metrics: bool
+    wandb_log_every_epoch: bool
 
     eval_enabled: bool
     eval_interval_epochs: int
@@ -47,6 +50,8 @@ class TrainConfig:
             raise ValueError("patience must be >= 0")
         if self.wandb_mode not in {"online", "offline", "auto"}:
             raise ValueError("wandb_mode must be one of: online, offline, auto")
+        if self.wandb_log_profile not in {"core", "core+diag"}:
+            raise ValueError("wandb_log_profile must be one of: core, core+diag")
         if self.eval_interval_epochs < 1:
             raise ValueError("eval_interval_epochs must be >= 1")
         if self.eval_iou_threshold < 0 or self.eval_iou_threshold > 1:

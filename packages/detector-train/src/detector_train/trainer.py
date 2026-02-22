@@ -6,6 +6,7 @@ from typing import Any
 
 import csv
 import json
+import re
 
 from .config import TrainConfig
 from .data_yaml import write_data_yaml
@@ -27,52 +28,100 @@ def _resolve_device(requested: str) -> str:
     return "cpu"
 
 
-def _extract_last_metrics(results_csv: Path) -> dict[str, float]:
-    if not results_csv.exists():
-        return {}
-
-    with results_csv.open("r", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        rows = list(reader)
-    if not rows:
-        return {}
-
-    out: dict[str, float] = {}
-    for k, v in rows[-1].items():
-        if v is None:
-            continue
-        vv = v.strip()
-        if vv == "":
-            continue
-        try:
-            out[k] = float(vv)
-        except Exception:
-            continue
-    return out
-
-
 def _json_safe(obj):
     """Convert objects (e.g. Path) into JSON-serializable primitives."""
     return json.loads(json.dumps(obj, default=str))
 
 
-def _extract_epoch_metrics(trainer) -> dict[str, float]:
+def _to_float(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    if out != out:  # NaN
+        return None
+    if out in (float("inf"), float("-inf")):
+        return None
+    return out
+
+
+def _normalize_key(key: str) -> str:
+    key = key.strip().lower()
+    key = key.replace("(", "").replace(")", "")
+    key = re.sub(r"\s+", "", key)
+    return key
+
+
+def _canonical_key(raw_key: str) -> str | None:
+    k = _normalize_key(raw_key)
+
+    if "metrics/precision" in k:
+        return "val/precision"
+    if "metrics/recall" in k:
+        return "val/recall"
+    if "metrics/map50-95" in k or "metrics/map50_95" in k:
+        return "val/map50_95"
+    if "metrics/map50" in k:
+        return "val/map50"
+
+    if "train/box_loss" in k or k.endswith("box_loss"):
+        return "train/loss_box"
+    if "train/cls_loss" in k or k.endswith("cls_loss"):
+        return "train/loss_cls"
+    if "train/dfl_loss" in k or k.endswith("dfl_loss"):
+        return "train/loss_dfl"
+
+    if k in {"lr", "train/lr"} or "lr/pg0" in k:
+        return "train/lr"
+
+    if "instances" in k:
+        return "train/num_instances"
+
+    return None
+
+
+def _drop_non_profile_metrics(payload: dict[str, float], profile: str) -> dict[str, float]:
+    if profile == "core+diag":
+        return payload
+    diag_keys = {"train/speed_ms_per_img", "train/num_instances"}
+    return {k: v for k, v in payload.items() if k not in diag_keys}
+
+
+def _extract_epoch_metrics(trainer, profile: str) -> dict[str, float]:
     out: dict[str, float] = {}
 
     metrics = getattr(trainer, "metrics", None)
     if isinstance(metrics, dict):
-        for k, v in metrics.items():
-            try:
-                out[f"train/{k}"] = float(v)
-            except Exception:
+        speed_vals: list[float] = []
+        for key, value in metrics.items():
+            fv = _to_float(value)
+            if fv is None:
                 continue
+            canonical = _canonical_key(key)
+            if canonical is not None:
+                out[canonical] = fv
+            nk = _normalize_key(str(key))
+            if nk.startswith("speed/"):
+                speed_vals.append(fv)
+        if speed_vals:
+            out["train/speed_ms_per_img"] = float(sum(speed_vals))
 
     tloss = getattr(trainer, "tloss", None)
     if tloss is not None:
         try:
             arr = tloss.detach().cpu().numpy().reshape(-1)
-            for i, v in enumerate(arr):
-                out[f"train/loss_{i}"] = float(v)
+            if arr.size > 0:
+                box = _to_float(arr[0])
+                if box is not None:
+                    out["train/loss_box"] = box
+            if arr.size > 1:
+                cls = _to_float(arr[1])
+                if cls is not None:
+                    out["train/loss_cls"] = cls
+            if arr.size > 2:
+                dfl = _to_float(arr[2])
+                if dfl is not None:
+                    out["train/loss_dfl"] = dfl
         except Exception:
             pass
 
@@ -85,7 +134,52 @@ def _extract_epoch_metrics(trainer) -> dict[str, float]:
         except Exception:
             pass
 
-    return out
+    loss_keys = ("train/loss_box", "train/loss_cls", "train/loss_dfl")
+    losses = [out[k] for k in loss_keys if k in out]
+    if losses:
+        out["train/loss_total"] = float(sum(losses))
+
+    return _drop_non_profile_metrics(out, profile)
+
+
+def _extract_last_metrics(results_csv: Path, profile: str) -> dict[str, float]:
+    if not results_csv.exists():
+        return {}
+
+    with results_csv.open("r", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+    if not rows:
+        return {}
+
+    raw_row = rows[-1]
+    out: dict[str, float] = {}
+    speed_vals: list[float] = []
+
+    for key, value in raw_row.items():
+        if value is None:
+            continue
+        fv = _to_float(str(value).strip())
+        if fv is None:
+            continue
+
+        canonical = _canonical_key(key)
+        if canonical is not None:
+            out[canonical] = fv
+
+        nk = _normalize_key(key)
+        if nk.startswith("speed/"):
+            speed_vals.append(fv)
+
+    if speed_vals:
+        out["train/speed_ms_per_img"] = float(sum(speed_vals))
+
+    loss_keys = ("train/loss_box", "train/loss_cls", "train/loss_dfl")
+    losses = [out[k] for k in loss_keys if k in out]
+    if losses:
+        out["train/loss_total"] = float(sum(losses))
+
+    return _drop_non_profile_metrics(out, profile)
 
 
 def _run_periodic_eval(
@@ -103,6 +197,7 @@ def _run_periodic_eval(
 
     weights_last = save_dir / "weights" / "last.pt"
     if not weights_last.exists():
+        log_wandb(wandb_run, {"eval/status": 0.0}, step=epoch)
         return {"status": "skipped", "reason": f"missing checkpoint: {weights_last}"}
 
     pred_root = config.artifacts_root / "eval_predictions" / run_name / f"epoch_{epoch:03d}"
@@ -140,6 +235,7 @@ def _run_periodic_eval(
         log_wandb(
             wandb_run,
             {
+                "eval/status": 1.0,
                 "eval/precision": row.get("precision"),
                 "eval/recall": row.get("recall"),
                 "eval/miss_rate": row.get("miss_rate"),
@@ -152,6 +248,8 @@ def _run_periodic_eval(
             },
             step=epoch,
         )
+    else:
+        log_wandb(wandb_run, {"eval/status": 0.0}, step=epoch)
 
     return {
         "status": "ok",
@@ -182,6 +280,9 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "workers": config.workers,
         "patience": config.patience,
         "classes_count": len(names),
+        "wandb_log_profile": config.wandb_log_profile,
+        "wandb_log_every_epoch": config.wandb_log_every_epoch,
+        "wandb_log_system_metrics": config.wandb_log_system_metrics,
     }
 
     run_name = config.wandb_run_name or config.name
@@ -194,6 +295,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         tags=config.wandb_tags,
         notes=config.wandb_notes,
         config=wandb_cfg,
+        log_system_metrics=config.wandb_log_system_metrics,
     )
 
     try:
@@ -202,6 +304,17 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         model = YOLO(config.model)
         periodic_eval: list[dict[str, Any]] = []
         last_eval_epoch = -1
+        logged_keys_by_step: dict[int, set[str]] = {}
+
+        def _log_step_payload(step: int, payload: dict[str, float]) -> None:
+            if step <= 0 or not payload:
+                return
+            sent = logged_keys_by_step.setdefault(step, set())
+            unique_payload = {k: v for k, v in payload.items() if k not in sent}
+            if not unique_payload:
+                return
+            log_wandb(wandb_run, unique_payload, step=step)
+            sent.update(unique_payload.keys())
 
         def _on_fit_epoch_end(trainer) -> None:
             nonlocal last_eval_epoch
@@ -210,10 +323,9 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             if current_epoch <= 0:
                 return
 
-            # Always log train metrics each epoch for better W&B tracking.
-            epoch_metrics = _extract_epoch_metrics(trainer)
-            if epoch_metrics:
-                log_wandb(wandb_run, epoch_metrics, step=current_epoch)
+            if config.wandb_log_every_epoch:
+                epoch_metrics = _extract_epoch_metrics(trainer, config.wandb_log_profile)
+                _log_step_payload(current_epoch, epoch_metrics)
 
             if not config.eval_enabled:
                 return
@@ -243,7 +355,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                         "error": str(exc),
                     }
                 )
-                log_wandb(wandb_run, {"eval/error": 1, "eval/error_message": str(exc)}, step=current_epoch)
+                _log_step_payload(current_epoch, {"eval/status": 0.0, "eval/error_flag": 1.0})
 
             last_eval_epoch = current_epoch
 
@@ -268,8 +380,10 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         last_weights = weights_dir / "last.pt"
         results_csv = save_dir / "results.csv"
 
-        metrics = _extract_last_metrics(results_csv)
-        log_wandb(wandb_run, metrics)
+        metrics = _extract_last_metrics(results_csv, config.wandb_log_profile)
+        if metrics:
+            final_payload = {f"final/{k.replace('/', '_')}": v for k, v in metrics.items()}
+            _log_step_payload(config.epochs, final_payload)
 
         summary = {
             "status": "ok",

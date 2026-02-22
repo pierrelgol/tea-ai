@@ -13,3 +13,9 @@ Responsibilities:
 ```bash
 uv run detector-train --dataset coco8 --datasets-base-root dataset/augmented --artifacts-root artifacts/detector-train
 ```
+
+For cleaner live monitoring in W&B:
+
+```bash
+uv run detector-train --wandb-log-profile core+diag --wandb-log-every-epoch
+```

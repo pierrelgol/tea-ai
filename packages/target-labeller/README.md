@@ -20,3 +20,7 @@ uv run target-labeller
 - `Ctrl+S`: save current annotation
 - `Left` / `A`: previous image
 - `Right` / `D`: next image
+- `Finish`: exports labeled samples to:
+  - `dataset/targets/images/<class_name>.<ext>` (or `<class_name>_2`, `_3`, ...)
+  - `dataset/targets/labels/<class_name>.txt` (same stem as image)
+  then closes the tool.

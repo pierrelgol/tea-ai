@@ -1,0 +1,54 @@
+Model Source
+- requested: latest
+- resolved_model_key: run-20260222-154952_best
+- weights: /home/pollivie/workspace-ai/yolo-fine-tune/runs/obb/artifacts/detector-train/runs/run-20260222-154952/weights/best.pt
+- predictions_root: predictions/run-20260222-154952_best/labels
+
+Inference
+- executed: yes
+- device: 0
+- images_processed: 256
+- label_files_written: 256
+
+Grading
+- dataset_root: dataset/augmented/coco128
+- samples_indexed: 256
+- samples_scored: 256
+- missing_image_samples: 0
+- missing_gt_label_samples: 0
+- missing_prediction_file_samples: 0
+- invalid_samples_skipped: 0
+- run_grade_0_100: 81.1309
+- run_precision_proxy: 1.0000
+- run_recall_proxy: 1.0000
+- run_miss_rate_proxy: 0.0000
+- run_class_match_rate: 1.0000
+
+Split Metrics
+- train: grade=80.9277, samples=128, score_p50=81.5763, score_p90=87.0495
+  objects gt/pred/matched=128/128/128, fn=0, fp=0, class_mismatch=0
+  precision_proxy=1.0000, recall_proxy=1.0000, miss_rate=0.0000, fdr=0.0000
+  penalties fn/fp/containment=0.0000/0.0000/0.0044
+  mean_iou=0.8823, iou_p90=0.9188, iou_ge_0.50=1.0000, iou_ge_0.75=0.9922
+  corner_err_px mean/p90=16.1414/24.6976, center_err_px mean/p90=4.3786/8.1140
+  center_err_norm_mean=0.0057, angle_err_deg mean/p90=3.1664/6.5394
+  orientation<=5deg=0.8125, orientation<=10deg=0.9922
+  area_ratio mean/median=1.0970/1.0983, abs_log_area_ratio_mean=0.0936, edge_rel_error_mean=0.0504, gt_area_missed_mean=0.0177, gt_area_missed_p90=0.0369, pred_outside_mean=0.1032
+  pred_conf mean/median=0.7862/0.8086
+  data_quality indexed/missing_img/missing_gt/missing_pred/invalid=128/0/0/0/0
+- val: grade=81.3341, samples=128, score_p50=81.1557, score_p90=86.6814
+  objects gt/pred/matched=128/128/128, fn=0, fp=0, class_mismatch=0
+  precision_proxy=1.0000, recall_proxy=1.0000, miss_rate=0.0000, fdr=0.0000
+  penalties fn/fp/containment=0.0000/0.0000/0.0039
+  mean_iou=0.8817, iou_p90=0.9160, iou_ge_0.50=1.0000, iou_ge_0.75=1.0000
+  corner_err_px mean/p90=15.2053/22.9474, center_err_px mean/p90=4.1565/7.7724
+  center_err_norm_mean=0.0054, angle_err_deg mean/p90=2.9345/6.6473
+  orientation<=5deg=0.8125, orientation<=10deg=0.9922
+  area_ratio mean/median=1.1021/1.1033, abs_log_area_ratio_mean=0.0964, edge_rel_error_mean=0.0479, gt_area_missed_mean=0.0155, gt_area_missed_p90=0.0325, pred_outside_mean=0.1055
+  pred_conf mean/median=0.7743/0.8182
+  data_quality indexed/missing_img/missing_gt/missing_pred/invalid=128/0/0/0/0
+
+Reports
+- summary_json: dataset/augmented/coco128/grade_reports/grade_report_run-20260222-154952_best.json
+- samples_jsonl: dataset/augmented/coco128/grade_reports/grade_samples_run-20260222-154952_best.jsonl
+- summary_md: dataset/augmented/coco128/grade_reports/grade_summary_run-20260222-154952_best.md

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
 
@@ -102,6 +103,37 @@ def load_backgrounds_by_split(split_dirs: dict[str, Path]) -> dict[str, list[Pat
             ]
         )
     return out
+
+
+def _sha1_file(path: Path) -> str:
+    h = hashlib.sha1()
+    with path.open("rb") as f:
+        while True:
+            chunk = f.read(1024 * 1024)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def audit_background_split_overlap(backgrounds_by_split: dict[str, list[Path]]) -> dict:
+    train_hashes = {_sha1_file(p): p for p in backgrounds_by_split.get("train", [])}
+    val_hashes = {_sha1_file(p): p for p in backgrounds_by_split.get("val", [])}
+    overlap_hashes = sorted(set(train_hashes) & set(val_hashes))
+    overlaps = [
+        {
+            "sha1": h,
+            "train_path": str(train_hashes[h]),
+            "val_path": str(val_hashes[h]),
+        }
+        for h in overlap_hashes
+    ]
+    return {
+        "train_count": len(backgrounds_by_split.get("train", [])),
+        "val_count": len(backgrounds_by_split.get("val", [])),
+        "overlap_count": len(overlaps),
+        "overlaps": overlaps,
+    }
 
 
 def _format_yolo_obb_line(class_id: int, obb_norm: np.ndarray) -> str:

@@ -20,6 +20,15 @@ uv run dataset-generator \
   --max-occlusion-ratio 0.45
 ```
 
+Hard OBB profile (higher clutter, stronger corruption, edge-biased placements):
+
+```bash
+uv run dataset-generator \
+  --dataset coco128 \
+  --output-root dataset/augmented_v3/coco128 \
+  --complexity-profile obb_robust_v2_hard
+```
+
 ## Output
 
 - `dataset/augmented/<dataset>/images/train|val`

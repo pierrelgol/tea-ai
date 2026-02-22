@@ -22,6 +22,8 @@ class HomographyParams:
     perspective_jitter: float
     min_quad_area_frac: float
     max_attempts: int
+    edge_bias_prob: float
+    edge_band_frac: float
 
 
 def sample_valid_homography(
@@ -47,6 +49,39 @@ def sample_valid_homography(
         raise RuntimeError("No feasible scale for current target/background geometry")
     scale_lower = min(params.scale_min, scale_upper)
 
+    def _sample_center(
+        *,
+        margin_x: float,
+        margin_y: float,
+    ) -> tuple[float, float]:
+        cx0 = background_w * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_w
+        cy0 = background_h * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_h
+        if rng.random() >= params.edge_bias_prob:
+            return (
+                float(np.clip(cx0, margin_x, background_w - margin_x)),
+                float(np.clip(cy0, margin_y, background_h - margin_y)),
+            )
+
+        band_x = max(margin_x, params.edge_band_frac * background_w)
+        band_y = max(margin_y, params.edge_band_frac * background_h)
+        edge = int(rng.integers(0, 4))
+        if edge == 0:
+            cx = float(rng.uniform(margin_x, min(background_w - margin_x, band_x)))
+            cy = float(rng.uniform(margin_y, background_h - margin_y))
+        elif edge == 1:
+            cx = float(rng.uniform(max(margin_x, background_w - band_x), background_w - margin_x))
+            cy = float(rng.uniform(margin_y, background_h - margin_y))
+        elif edge == 2:
+            cx = float(rng.uniform(margin_x, background_w - margin_x))
+            cy = float(rng.uniform(margin_y, min(background_h - margin_y, band_y)))
+        else:
+            cx = float(rng.uniform(margin_x, background_w - margin_x))
+            cy = float(rng.uniform(max(margin_y, background_h - band_y), background_h - margin_y))
+        return (
+            float(np.clip(cx, margin_x, background_w - margin_x)),
+            float(np.clip(cy, margin_y, background_h - margin_y)),
+        )
+
     for _ in range(params.max_attempts):
         scale = float(rng.uniform(scale_lower, scale_upper))
 
@@ -59,10 +94,7 @@ def sample_valid_homography(
         if margin_x >= background_w or margin_y >= background_h:
             continue
 
-        cx0 = background_w * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_w
-        cy0 = background_h * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_h
-        cx = float(np.clip(cx0, margin_x, background_w - margin_x))
-        cy = float(np.clip(cy0, margin_y, background_h - margin_y))
+        cx, cy = _sample_center(margin_x=margin_x, margin_y=margin_y)
 
         base_rect = np.array(
             [

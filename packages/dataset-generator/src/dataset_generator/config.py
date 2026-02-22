@@ -35,6 +35,8 @@ class GeneratorConfig:
     perspective_jitter: float = 0.08
     min_quad_area_frac: float = 0.002
     max_attempts: int = 50
+    edge_bias_prob: float = 0.10
+    edge_band_frac: float = 0.18
 
     class_offset_base: int = 80
     blur_prob: float = 0.35
@@ -42,6 +44,20 @@ class GeneratorConfig:
     noise_prob: float = 0.25
     jpeg_artifact_prob: float = 0.20
     color_jitter_prob: float = 0.50
+    color_hue_shift_max_deg: float = 8.0
+    color_sat_gain_min: float = 0.75
+    color_sat_gain_max: float = 1.25
+    color_val_gain_min: float = 0.75
+    color_val_gain_max: float = 1.25
+    gaussian_blur_kernel_min: int = 3
+    gaussian_blur_kernel_max: int = 9
+    motion_blur_kernel_min: int = 5
+    motion_blur_kernel_max: int = 15
+    motion_blur_angle_max_deg: float = 30.0
+    noise_sigma_min: float = 3.0
+    noise_sigma_max: float = 14.0
+    jpeg_quality_min: int = 40
+    jpeg_quality_max: int = 85
 
     def validate(self) -> None:
         if self.samples_per_background < 1:
@@ -58,6 +74,10 @@ class GeneratorConfig:
             raise ValueError("min_quad_area_frac must be > 0")
         if self.max_attempts < 1:
             raise ValueError("max_attempts must be >= 1")
+        if self.edge_bias_prob < 0 or self.edge_bias_prob > 1:
+            raise ValueError("edge_bias_prob must be in [0,1]")
+        if self.edge_band_frac <= 0 or self.edge_band_frac >= 0.5:
+            raise ValueError("edge_band_frac must be in (0,0.5)")
         if self.class_offset_base < 0:
             raise ValueError("class_offset_base must be >= 0")
         if self.targets_per_image_min < 1:
@@ -75,6 +95,34 @@ class GeneratorConfig:
         ):
             if value < 0 or value > 1:
                 raise ValueError(f"{name} must be in [0,1]")
+        if self.color_hue_shift_max_deg < 0:
+            raise ValueError("color_hue_shift_max_deg must be >= 0")
+        if self.color_sat_gain_min <= 0 or self.color_sat_gain_max <= 0:
+            raise ValueError("color_sat_gain bounds must be > 0")
+        if self.color_sat_gain_min > self.color_sat_gain_max:
+            raise ValueError("color_sat_gain_min must be <= color_sat_gain_max")
+        if self.color_val_gain_min <= 0 or self.color_val_gain_max <= 0:
+            raise ValueError("color_val_gain bounds must be > 0")
+        if self.color_val_gain_min > self.color_val_gain_max:
+            raise ValueError("color_val_gain_min must be <= color_val_gain_max")
+        if self.gaussian_blur_kernel_min < 1 or self.gaussian_blur_kernel_max < 1:
+            raise ValueError("gaussian blur kernel bounds must be >= 1")
+        if self.gaussian_blur_kernel_min > self.gaussian_blur_kernel_max:
+            raise ValueError("gaussian_blur_kernel_min must be <= gaussian_blur_kernel_max")
+        if self.motion_blur_kernel_min < 1 or self.motion_blur_kernel_max < 1:
+            raise ValueError("motion blur kernel bounds must be >= 1")
+        if self.motion_blur_kernel_min > self.motion_blur_kernel_max:
+            raise ValueError("motion_blur_kernel_min must be <= motion_blur_kernel_max")
+        if self.motion_blur_angle_max_deg < 0:
+            raise ValueError("motion_blur_angle_max_deg must be >= 0")
+        if self.noise_sigma_min < 0 or self.noise_sigma_max < 0:
+            raise ValueError("noise sigma bounds must be >= 0")
+        if self.noise_sigma_min > self.noise_sigma_max:
+            raise ValueError("noise_sigma_min must be <= noise_sigma_max")
+        if self.jpeg_quality_min < 1 or self.jpeg_quality_max > 100:
+            raise ValueError("jpeg quality bounds must be in [1,100]")
+        if self.jpeg_quality_min > self.jpeg_quality_max:
+            raise ValueError("jpeg_quality_min must be <= jpeg_quality_max")
         if "train" not in self.background_splits or "val" not in self.background_splits:
             raise ValueError("background_splits must define train and val paths")
         for split, path in self.background_splits.items():

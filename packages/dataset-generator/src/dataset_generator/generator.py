@@ -12,6 +12,7 @@ from .geometry import apply_homography_to_points, corners_px_to_yolo_obb
 from .homography import HomographyParams, sample_valid_homography
 from .io import (
     CanonicalTarget,
+    audit_background_split_overlap,
     load_backgrounds_by_split,
     load_canonical_targets,
     load_target_classes,
@@ -117,6 +118,13 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
     )
     target_classes = load_target_classes(config.target_classes_file)
     backgrounds_by_split = load_backgrounds_by_split(config.background_splits)
+    split_audit = audit_background_split_overlap(backgrounds_by_split)
+    write_metadata(config.output_root / "split_audit.json", split_audit)
+    if split_audit.get("overlap_count", 0) > 0:
+        raise ValueError(
+            "train/val background splits are not disjoint by content hash; "
+            f"found {split_audit['overlap_count']} duplicate source images"
+        )
     target_images_cache: dict[str, np.ndarray] = {}
 
     _ensure_output_layout(config.output_root)
@@ -129,6 +137,8 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
         perspective_jitter=config.perspective_jitter,
         min_quad_area_frac=config.min_quad_area_frac,
         max_attempts=config.max_attempts,
+        edge_bias_prob=config.edge_bias_prob,
+        edge_band_frac=config.edge_band_frac,
     )
     rng = np.random.default_rng(config.seed)
     results: list[SampleResult] = []
@@ -234,4 +244,3 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                 )
 
     return results
-

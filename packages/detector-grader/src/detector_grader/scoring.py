@@ -19,17 +19,19 @@ from .geometry import (
 
 @dataclass(slots=True)
 class ScoreWeights:
-    iou: float = 0.40
-    corner: float = 0.25
-    angle: float = 0.15
-    center: float = 0.10
-    shape: float = 0.10
+    iou: float = 0.50
+    corner: float = 0.28
+    angle: float = 0.08
+    center: float = 0.06
+    shape: float = 0.08
 
     fn_penalty: float = 0.35
     fp_penalty: float = 0.20
-    containment_miss_penalty: float = 0.25
-    tau_corner_px: float = 25.0
-    tau_center_px: float = 30.0
+    containment_miss_penalty: float = 0.35
+    containment_outside_penalty: float = 0.20
+    tau_corner_px: float = 20.0
+    tau_center_px: float = 24.0
+    iou_gamma: float = 1.6
 
     def normalized(self) -> "ScoreWeights":
         s = self.iou + self.corner + self.angle + self.center + self.shape
@@ -44,8 +46,10 @@ class ScoreWeights:
             fn_penalty=self.fn_penalty,
             fp_penalty=self.fp_penalty,
             containment_miss_penalty=self.containment_miss_penalty,
+            containment_outside_penalty=self.containment_outside_penalty,
             tau_corner_px=self.tau_corner_px,
             tau_center_px=self.tau_center_px,
+            iou_gamma=self.iou_gamma,
         )
 
 
@@ -114,6 +118,12 @@ def _safe_exp_score(err: float, tau: float) -> float:
     return float(np.exp(-max(0.0, err) / tau))
 
 
+def _iou_emphasis_score(iou: float, gamma: float) -> float:
+    if gamma <= 1e-9:
+        return float(np.clip(iou, 0.0, 1.0))
+    return float(np.clip(iou, 0.0, 1.0) ** gamma)
+
+
 def _shape_score(gt: np.ndarray, pred: np.ndarray) -> float:
     gt_l = edge_lengths(gt)
     pr_l = edge_lengths(pred)
@@ -153,7 +163,8 @@ def _stat_or_none(vals: list[float], fn: str) -> float | None:
 def compute_match_components(gt: np.ndarray, pred: np.ndarray, weights: ScoreWeights) -> MatchComponents:
     pred_reordered = reorder_corners_to_best(gt, pred)
 
-    iou_score = float(np.clip(polygon_iou(gt, pred_reordered), 0.0, 1.0))
+    iou_raw = float(np.clip(polygon_iou(gt, pred_reordered), 0.0, 1.0))
+    iou_score = _iou_emphasis_score(iou_raw, weights.iou_gamma)
 
     corner_err = float(np.mean(np.linalg.norm(gt - pred_reordered, axis=1)))
     corner_score = _safe_exp_score(corner_err, weights.tau_corner_px)
@@ -274,7 +285,11 @@ def score_sample(
     fn_pen = (len(unmatched_gt) / denom) * wp.fn_penalty
     fp_pen = (len(unmatched_pred) / denom) * wp.fp_penalty
     containment_miss_mean = float(np.mean([d.gt_area_missed_ratio for d in diags])) if diags else 0.0
-    containment_pen = containment_miss_mean * wp.containment_miss_penalty
+    containment_outside_mean = float(np.mean([d.pred_outside_ratio for d in diags])) if diags else 0.0
+    containment_pen = (
+        containment_miss_mean * wp.containment_miss_penalty
+        + containment_outside_mean * wp.containment_outside_penalty
+    )
 
     final = float(np.clip(base - fn_pen - fp_pen - containment_pen, 0.0, 1.0))
 

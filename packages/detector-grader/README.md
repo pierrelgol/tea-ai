@@ -8,7 +8,7 @@ CLI scorer for detector runs using strict OBB geometry quality.
 - Resolves model source from `--model` (`latest`, `.`, weights path, run dir, or predictions key)
 - Can run inference automatically before grading
 - Matches predictions to GT with polygon IoU
-- Computes weighted geometric score components
+- Computes weighted geometric score components (IoU + boundary containment emphasis by default)
 - Produces per-sample, per-split, and global run grades
 
 ## Run

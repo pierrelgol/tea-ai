@@ -24,16 +24,18 @@ def _load_weights_profile(path: Path | None) -> ScoreWeights:
         return ScoreWeights()
     payload = json.loads(path.read_text(encoding="utf-8"))
     return ScoreWeights(
-        iou=float(payload.get("iou", 0.40)),
-        corner=float(payload.get("corner", 0.25)),
-        angle=float(payload.get("angle", 0.15)),
-        center=float(payload.get("center", 0.10)),
-        shape=float(payload.get("shape", 0.10)),
+        iou=float(payload.get("iou", 0.50)),
+        corner=float(payload.get("corner", 0.28)),
+        angle=float(payload.get("angle", 0.08)),
+        center=float(payload.get("center", 0.06)),
+        shape=float(payload.get("shape", 0.08)),
         fn_penalty=float(payload.get("fn_penalty", 0.35)),
         fp_penalty=float(payload.get("fp_penalty", 0.20)),
-        containment_miss_penalty=float(payload.get("containment_miss_penalty", 0.25)),
-        tau_corner_px=float(payload.get("tau_corner_px", 25.0)),
-        tau_center_px=float(payload.get("tau_center_px", 30.0)),
+        containment_miss_penalty=float(payload.get("containment_miss_penalty", 0.35)),
+        containment_outside_penalty=float(payload.get("containment_outside_penalty", 0.20)),
+        tau_corner_px=float(payload.get("tau_corner_px", 20.0)),
+        tau_center_px=float(payload.get("tau_center_px", 24.0)),
+        iou_gamma=float(payload.get("iou_gamma", 1.6)),
     )
 
 
@@ -263,8 +265,10 @@ def main() -> None:
             "fn_penalty": weights_profile.fn_penalty,
             "fp_penalty": weights_profile.fp_penalty,
             "containment_miss_penalty": weights_profile.containment_miss_penalty,
+            "containment_outside_penalty": weights_profile.containment_outside_penalty,
             "tau_corner_px": weights_profile.tau_corner_px,
             "tau_center_px": weights_profile.tau_center_px,
+            "iou_gamma": weights_profile.iou_gamma,
         },
     }
 

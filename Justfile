@@ -74,6 +74,14 @@ generate-augmented-robust OUT_ROOT='dataset/augmented_v2/{{dataset}}': venv
       --jpeg-artifact-prob 0.20 \
       --color-jitter-prob 0.50
 
+generate-augmented-hard OUT_ROOT='dataset/augmented_v3/{{dataset}}': venv
+    @uv sync --all-packages
+    @uv run dataset-generator \
+      --dataset {{dataset}} \
+      --dataset-root dataset \
+      --output-root {{OUT_ROOT}} \
+      --complexity-profile obb_robust_v2_hard
+
 check-augmented: venv
     @uv sync --all-packages
     @uv run augment-checker --dataset {{dataset}} --datasets-base-root dataset/augmented
@@ -120,6 +128,7 @@ quality-gate GRADE_REPORT DATASET_ROOT='dataset/augmented_v2/{{dataset}}' MIN_RU
       uv run dataset-generator-gate \
         --integrity-report {{DATASET_ROOT}}/reports/integrity_report.json \
         --geometry-report {{DATASET_ROOT}}/reports/geometry_report.json \
+        --split-audit {{DATASET_ROOT}}/split_audit.json \
         --grade-report {{GRADE_REPORT}} \
         --max-geometry-outlier-rate 0.005 \
         --min-run-grade {{MIN_RUN_GRADE}}; \
@@ -127,6 +136,7 @@ quality-gate GRADE_REPORT DATASET_ROOT='dataset/augmented_v2/{{dataset}}' MIN_RU
       uv run dataset-generator-gate \
         --integrity-report {{DATASET_ROOT}}/reports/integrity_report.json \
         --geometry-report {{DATASET_ROOT}}/reports/geometry_report.json \
+        --split-audit {{DATASET_ROOT}}/split_audit.json \
         --grade-report {{GRADE_REPORT}} \
         --max-geometry-outlier-rate 0.005; \
     fi

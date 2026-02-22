@@ -94,6 +94,8 @@ def run_inference_for_grading(
     device: str,
     conf_threshold: float,
     infer_iou_threshold: float,
+    use_tta: bool,
+    agnostic_nms: bool,
     seed: int,
 ) -> dict:
     set_seed(seed)
@@ -116,6 +118,8 @@ def run_inference_for_grading(
                 iou=infer_iou_threshold,
                 imgsz=imgsz,
                 device=resolved_device,
+                augment=use_tta,
+                agnostic_nms=agnostic_nms,
                 verbose=False,
             )
             lines = _result_to_lines(results[0])
@@ -130,4 +134,6 @@ def run_inference_for_grading(
         "images_processed": total_images,
         "label_files_written": written,
         "predictions_root": str(predictions_root),
+        "use_tta": bool(use_tta),
+        "agnostic_nms": bool(agnostic_nms),
     }

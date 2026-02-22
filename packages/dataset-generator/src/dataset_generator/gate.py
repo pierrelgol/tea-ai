@@ -14,6 +14,7 @@ def main() -> None:
     parser.add_argument("--integrity-report", type=Path, required=True)
     parser.add_argument("--geometry-report", type=Path, required=True)
     parser.add_argument("--grade-report", type=Path, required=True)
+    parser.add_argument("--split-audit", type=Path, default=None, help="Optional split audit JSON from generator")
     parser.add_argument("--max-geometry-outlier-rate", type=float, default=0.005)
     parser.add_argument("--min-run-grade", type=float, default=None, help="Optional absolute grade floor")
     args = parser.parse_args()
@@ -21,10 +22,12 @@ def main() -> None:
     integrity = _load_json(args.integrity_report)
     geometry = _load_json(args.geometry_report)
     grade = _load_json(args.grade_report)
+    split_audit = _load_json(args.split_audit) if args.split_audit is not None else None
 
     integrity_issues = int(integrity.get("summary", {}).get("total_issues", 0))
     outlier_rate = float(geometry.get("summary", {}).get("outlier_rate", 1.0) or 0.0)
     run_grade = float(grade.get("aggregate", {}).get("run_grade_0_100", 0.0) or 0.0)
+    overlap_count = int(split_audit.get("overlap_count", 0)) if isinstance(split_audit, dict) else None
 
     failed: list[str] = []
     if integrity_issues != 0:
@@ -35,10 +38,14 @@ def main() -> None:
         )
     if args.min_run_grade is not None and run_grade < args.min_run_grade:
         failed.append(f"run grade below threshold (got {run_grade:.4f}, required {args.min_run_grade:.4f})")
+    if overlap_count is not None and overlap_count != 0:
+        failed.append(f"split overlap must be 0 (got {overlap_count})")
 
     print(f"integrity_issues={integrity_issues}")
     print(f"geometry_outlier_rate={outlier_rate:.6f}")
     print(f"run_grade_0_100={run_grade:.4f}")
+    if overlap_count is not None:
+        print(f"split_overlap_count={overlap_count}")
     if failed:
         for msg in failed:
             print(f"FAIL: {msg}")

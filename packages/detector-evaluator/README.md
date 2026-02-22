@@ -4,7 +4,7 @@ Pure evaluation package for synthetic/real detection datasets.
 
 ## Features
 
-- Ground truth + prediction loading (YOLO bbox/OBB)
+- Ground truth + prediction loading (YOLO OBB only)
 - Confidence filtering
 - One-to-one IoU matching (greedy)
 - Detection metrics + AP@IoU

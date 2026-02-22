@@ -61,21 +61,7 @@ def _result_to_lines(res: Any) -> list[str]:
             lines.append(_format_obb_line(int(classes[i]), coords[i], float(confs[i])))
         return lines
 
-    # Fallback to AABB if OBB not available from backend
-    if getattr(res, "boxes", None) is not None and res.boxes is not None and res.boxes.xyxy is not None:
-        boxes = res.boxes.xyxy.cpu().numpy()
-        confs = res.boxes.conf.cpu().numpy() if hasattr(res.boxes, "conf") else np.ones((boxes.shape[0],), dtype=np.float32)
-        classes = res.boxes.cls.cpu().numpy().astype(int) if hasattr(res.boxes, "cls") else np.zeros((boxes.shape[0],), dtype=int)
-        h, w = res.orig_shape[:2]
-        for i in range(boxes.shape[0]):
-            x1, y1, x2, y2 = boxes[i]
-            corners = np.array(
-                [[x1 / w, y1 / h], [x2 / w, y1 / h], [x2 / w, y2 / h], [x1 / w, y2 / h]],
-                dtype=np.float32,
-            )
-            corners = np.clip(corners, 0.0, 1.0)
-            lines.append(_format_obb_line(int(classes[i]), corners, float(confs[i])))
-    return lines
+    raise RuntimeError("Model prediction does not expose OBB output; OBB model/weights are required")
 
 
 def run_inference(config: InferConfig) -> dict:

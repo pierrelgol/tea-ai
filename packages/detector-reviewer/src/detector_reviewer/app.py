@@ -170,6 +170,8 @@ class ReviewWindow(QMainWindow):
             coords = np.clip(coords, 0.0, 1.0)
             for i in range(coords.shape[0]):
                 preds.append(Label(class_id=int(classes[i]), corners_norm=coords[i], confidence=float(confs[i])))
+        else:
+            raise RuntimeError("Model prediction does not expose OBB output; OBB model/weights are required")
 
         self.pred_cache[key] = preds
         return preds

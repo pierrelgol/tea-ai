@@ -28,7 +28,7 @@ class GeometryMetrics:
     evaluable: bool
     mean_corner_err_px: float | None
     max_corner_err_px: float | None
-    bbox_iou_meta_vs_label: float | None
+    obb_iou_meta_vs_label: float | None
     is_outlier: bool
     message: str | None = None
 

@@ -1,6 +1,6 @@
 # target-labeller
 
-Simple Qt GUI tool to label one bounding box per image and export YOLO format.
+Simple Qt GUI tool to label one bounding box per image and export YOLO OBB format.
 
 ## Defaults
 

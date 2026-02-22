@@ -143,7 +143,7 @@ class CheckerWindow(QMainWindow):
 
         if self.show_green_overlay.isChecked() and rec.label_path is not None:
             try:
-                label = load_yolo_label(rec.label_path)
+                label = load_yolo_label(rec.label_path, is_prediction=False)
                 h, w = img.shape[:2]
                 corners = label_to_pixel_corners(label, w, h).reshape((-1, 1, 2)).astype("int32")
                 cv2.polylines(img, [corners], True, (0, 255, 0), 2)
@@ -186,7 +186,7 @@ class CheckerWindow(QMainWindow):
             lines.append(f"geometry evaluable: {geom.evaluable}")
             lines.append(f"mean corner err px: {geom.mean_corner_err_px}")
             lines.append(f"max corner err px: {geom.max_corner_err_px}")
-            lines.append(f"bbox iou meta-vs-label: {geom.bbox_iou_meta_vs_label}")
+            lines.append(f"obb iou meta-vs-label: {geom.obb_iou_meta_vs_label}")
             lines.append(f"outlier: {geom.is_outlier}")
             if geom.message:
                 lines.append(f"geometry message: {geom.message}")

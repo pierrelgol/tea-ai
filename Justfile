@@ -23,6 +23,9 @@ build: venv
 
 clean:
     @find . -type d \( -name "__pycache__" -o -name ".pytest_cache" -o -name ".ruff_cache" -o -name ".mypy_cache" \) -prune -exec rm -rf {} +
+    @for path in artifacts dataset predictions wandb; do \
+      if [[ -e "$path" ]]; then rm -rf "$path"; fi; \
+    done
     @if [[ -d dist || -d build || -f .coverage || -d htmlcov ]]; then \
       rm -rf dist build .coverage htmlcov; \
     else \
@@ -36,6 +39,11 @@ clean:
 
 fclean: clean
     @if [[ -d .venv ]]; then rm -rf .venv; fi
+    @if [[ -d .pixi ]]; then rm -rf .pixi; fi
+    @if [[ -d .tox ]]; then rm -rf .tox; fi
+    @if [[ -d .nox ]]; then rm -rf .nox; fi
+    @if [[ -d .hypothesis ]]; then rm -rf .hypothesis; fi
+    @find . -maxdepth 1 -type f -name "*.pt" -delete
 
 fetch-dataset: venv
     @uv sync --all-packages

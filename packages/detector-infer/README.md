@@ -6,6 +6,7 @@ Responsibilities:
 - Load weights
 - Run inference
 - Save predictions in YOLO format
+- Enforce OBB-only predictions (fails if model does not output OBB)
 
 ## Run
 

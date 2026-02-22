@@ -7,9 +7,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .geometry import yolo_bbox_to_corners_px
-
-
 @dataclass(slots=True)
 class CanonicalTarget:
     image_path: Path
@@ -28,16 +25,13 @@ def load_target_classes(classes_file: Path) -> list[str]:
     return classes
 
 
-def _parse_yolo_line(line: str) -> tuple[int, float, float, float, float]:
+def _parse_yolo_line(line: str) -> tuple[int, np.ndarray]:
     parts = line.split()
-    if len(parts) != 5:
-        raise ValueError(f"Expected 5 values in YOLO line, got {len(parts)}")
+    if len(parts) != 9:
+        raise ValueError(f"Expected 9 values in OBB YOLO line, got {len(parts)}")
     class_id = int(parts[0])
-    x_center = float(parts[1])
-    y_center = float(parts[2])
-    width = float(parts[3])
-    height = float(parts[4])
-    return class_id, x_center, y_center, width, height
+    coords = np.array([float(x) for x in parts[1:]], dtype=np.float32).reshape(4, 2)
+    return class_id, coords
 
 
 def load_canonical_targets(
@@ -71,18 +65,20 @@ def load_canonical_targets(
         if not line:
             continue
 
-        class_id, xc, yc, bw, bh = _parse_yolo_line(line[0])
+        class_id, corners_norm = _parse_yolo_line(line[0])
         if class_id < 0 or class_id >= len(classes):
             raise ValueError(f"Class id {class_id} in {label_path} outside classes range")
 
-        corners = yolo_bbox_to_corners_px(xc, yc, bw, bh, w, h)
+        corners = corners_norm.astype(np.float64).copy()
+        corners[:, 0] *= w
+        corners[:, 1] *= h
         targets.append(
             CanonicalTarget(
                 image_path=image_path,
                 label_path=label_path,
                 class_id_local=class_id,
                 class_name=classes[class_id],
-                canonical_corners_px=corners,
+                canonical_corners_px=corners.astype(np.float32),
             )
         )
 
@@ -106,14 +102,6 @@ def load_backgrounds_by_split(split_dirs: dict[str, Path]) -> dict[str, list[Pat
             ]
         )
     return out
-
-
-def write_yolo_label(path: Path, class_id: int, x_center: float, y_center: float, width: float, height: float) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n",
-        encoding="utf-8",
-    )
 
 
 def write_yolo_obb_label(path: Path, class_id: int, obb_norm: np.ndarray) -> None:

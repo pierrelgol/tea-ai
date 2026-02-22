@@ -56,39 +56,18 @@ def index_samples(dataset_root: Path, splits: list[str]) -> list[Sample]:
     return out
 
 
-def bbox_to_corners_norm(xc: float, yc: float, w: float, h: float) -> np.ndarray:
-    x1 = xc - w / 2.0
-    y1 = yc - h / 2.0
-    x2 = xc + w / 2.0
-    y2 = yc + h / 2.0
-    return np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.float32)
-
-
 def parse_label_line(line: str, is_prediction: bool) -> Label:
     parts = line.strip().split()
-    if len(parts) not in (5, 6, 9, 10):
-        raise ValueError("expected YOLO bbox/obb line")
+    if is_prediction and len(parts) != 10:
+        raise ValueError("expected YOLO OBB prediction line with 10 fields: class x1 y1 x2 y2 x3 y3 x4 y4 conf")
+    if (not is_prediction) and len(parts) != 9:
+        raise ValueError("expected YOLO OBB ground-truth line with 9 fields: class x1 y1 x2 y2 x3 y3 x4 y4")
 
     class_id = int(parts[0])
     vals = [float(x) for x in parts[1:]]
-
-    if len(parts) in (5, 6):
-        if len(parts) == 6:
-            xc, yc, w, h, conf = vals
-        else:
-            xc, yc, w, h = vals
-            conf = 1.0
-        return Label(class_id=class_id, corners_norm=bbox_to_corners_norm(xc, yc, w, h), confidence=float(conf))
-
-    if len(parts) == 10:
-        coords = vals[:8]
-        conf = vals[8]
-    else:
-        coords = vals
-        conf = 1.0
+    coords = vals[:8]
+    conf = vals[8] if is_prediction else 1.0
     corners = np.array(coords, dtype=np.float32).reshape(4, 2)
-    if not is_prediction:
-        conf = 1.0
     return Label(class_id=class_id, corners_norm=corners, confidence=float(conf))
 
 

@@ -37,7 +37,7 @@ def write_reports(
                 "evaluable": m.evaluable,
                 "mean_corner_err_px": m.mean_corner_err_px,
                 "max_corner_err_px": m.max_corner_err_px,
-                "bbox_iou_meta_vs_label": m.bbox_iou_meta_vs_label,
+                "obb_iou_meta_vs_label": m.obb_iou_meta_vs_label,
                 "is_outlier": m.is_outlier,
                 "message": m.message,
             }

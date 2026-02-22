@@ -2,18 +2,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from .detection_metrics import area_xyxy, center_drift_px
+from .detection_metrics import polygon_area, polygon_center_drift_px
 from .types import ParsedLabel, StabilitySummary
 
 
-def _to_xyxy(label: ParsedLabel, w: int, h: int) -> tuple[float, float, float, float]:
-    corners = label.corners_norm * np.array([[w, h]], dtype=np.float32)
-    return (
-        float(np.min(corners[:, 0])),
-        float(np.min(corners[:, 1])),
-        float(np.max(corners[:, 0])),
-        float(np.max(corners[:, 1])),
-    )
+def _to_poly(label: ParsedLabel, w: int, h: int) -> np.ndarray:
+    return label.corners_norm * np.array([[w, h]], dtype=np.float32)
 
 
 def compute_stability_metrics(
@@ -29,7 +23,7 @@ def compute_stability_metrics(
 
     for split, keys in by_split.items():
         keys.sort(key=lambda x: x[1])
-        prev_box = None
+        prev_poly: np.ndarray | None = None
 
         for key in keys:
             entry = match_lookup.get(key)
@@ -43,17 +37,17 @@ def compute_stability_metrics(
                 continue
 
             best = max(matches, key=lambda m: m.iou)
-            box = _to_xyxy(preds[best.pred_idx], w, h)
+            poly = _to_poly(preds[best.pred_idx], w, h)
 
-            if prev_box is not None:
-                drift = center_drift_px(prev_box, box)
-                area_prev = area_xyxy(prev_box)
-                area_cur = area_xyxy(box)
+            if prev_poly is not None:
+                drift = polygon_center_drift_px(prev_poly, poly)
+                area_prev = polygon_area(prev_poly)
+                area_cur = polygon_area(poly)
                 area_var = abs(area_cur - area_prev) / max(area_prev, 1e-9)
                 drifts.append(drift)
                 area_vars.append(area_var)
 
-            prev_box = box
+            prev_poly = poly
 
     return StabilitySummary(
         num_pairs=len(drifts),

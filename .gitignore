@@ -211,5 +211,6 @@ dataset/
 
 # Training/inference artifacts
 artifacts/
+predictions/
 wandb/
 *.pt

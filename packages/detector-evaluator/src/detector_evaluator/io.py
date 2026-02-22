@@ -9,54 +9,26 @@ import numpy as np
 from .types import ParsedLabel, SampleRecord
 
 
-def _bbox_to_corners_norm(xc: float, yc: float, w: float, h: float) -> np.ndarray:
-    x1 = xc - w / 2.0
-    y1 = yc - h / 2.0
-    x2 = xc + w / 2.0
-    y2 = yc + h / 2.0
-    return np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.float32)
-
-
 def parse_gt_label_line(line: str) -> ParsedLabel:
     parts = line.strip().split()
-    if len(parts) not in (5, 9):
-        raise ValueError("GT label line must have 5 (bbox) or 9 (obb) fields")
+    if len(parts) != 9:
+        raise ValueError("GT label line must have 9 OBB fields: class x1 y1 x2 y2 x3 y3 x4 y4")
 
     class_id = int(parts[0])
     vals = [float(x) for x in parts[1:]]
-
-    if len(parts) == 5:
-        corners = _bbox_to_corners_norm(vals[0], vals[1], vals[2], vals[3])
-        return ParsedLabel(class_id=class_id, corners_norm=corners, format_name="bbox", confidence=1.0)
-
     corners = np.array(vals, dtype=np.float32).reshape(4, 2)
     return ParsedLabel(class_id=class_id, corners_norm=corners, format_name="obb", confidence=1.0)
 
 
 def parse_pred_label_line(line: str) -> ParsedLabel:
     parts = line.strip().split()
-    if len(parts) not in (6, 10, 5, 9):
-        raise ValueError("Prediction line must have 6/10 fields (or 5/9 accepted as conf=1.0)")
+    if len(parts) != 10:
+        raise ValueError("Prediction line must have 10 OBB fields: class x1 y1 x2 y2 x3 y3 x4 y4 conf")
 
     class_id = int(parts[0])
-
-    if len(parts) in (6, 5):
-        vals = [float(x) for x in parts[1:]]
-        if len(parts) == 6:
-            xc, yc, w, h, conf = vals
-        else:
-            xc, yc, w, h = vals
-            conf = 1.0
-        corners = _bbox_to_corners_norm(xc, yc, w, h)
-        return ParsedLabel(class_id=class_id, corners_norm=corners, format_name="bbox", confidence=float(conf))
-
     vals = [float(x) for x in parts[1:]]
-    if len(parts) == 10:
-        coords = vals[:8]
-        conf = vals[8]
-    else:
-        coords = vals
-        conf = 1.0
+    coords = vals[:8]
+    conf = vals[8]
     corners = np.array(coords, dtype=np.float32).reshape(4, 2)
     return ParsedLabel(class_id=class_id, corners_norm=corners, format_name="obb", confidence=float(conf))
 
@@ -66,10 +38,13 @@ def load_labels(path: Path, *, is_prediction: bool, conf_threshold: float = 0.0)
         return []
 
     parsed: list[ParsedLabel] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip():
             continue
-        label = parse_pred_label_line(line) if is_prediction else parse_gt_label_line(line)
+        try:
+            label = parse_pred_label_line(line) if is_prediction else parse_gt_label_line(line)
+        except Exception as exc:
+            raise ValueError(f"invalid OBB label at {path}:{line_no}: {exc}") from exc
         if is_prediction and label.confidence < conf_threshold:
             continue
         parsed.append(label)
@@ -130,15 +105,6 @@ def corners_to_pixel(corners_norm: np.ndarray, image_w: int, image_h: int) -> np
     out[:, 0] *= image_w
     out[:, 1] *= image_h
     return out.astype(np.float32)
-
-
-def corners_to_xyxy(corners_px: np.ndarray) -> tuple[float, float, float, float]:
-    return (
-        float(np.min(corners_px[:, 0])),
-        float(np.min(corners_px[:, 1])),
-        float(np.max(corners_px[:, 0])),
-        float(np.max(corners_px[:, 1])),
-    )
 
 
 def load_meta(path: Path | None) -> dict | None:

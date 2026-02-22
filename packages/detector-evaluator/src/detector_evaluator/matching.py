@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import cv2
+import numpy as np
+
 
 @dataclass(slots=True)
 class Match:
@@ -10,18 +13,23 @@ class Match:
     iou: float
 
 
-def iou_xyxy(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
-    ax1, ay1, ax2, ay2 = a
-    bx1, by1, bx2, by2 = b
-    ix1 = max(ax1, bx1)
-    iy1 = max(ay1, by1)
-    ix2 = min(ax2, bx2)
-    iy2 = min(ay2, by2)
-    iw = max(0.0, ix2 - ix1)
-    ih = max(0.0, iy2 - iy1)
-    inter = iw * ih
-    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
-    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+def _poly_area(poly: np.ndarray) -> float:
+    x = poly[:, 0]
+    y = poly[:, 1]
+    return float(abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))) * 0.5)
+
+
+def polygon_iou(a: np.ndarray, b: np.ndarray) -> float:
+    pa = a.astype(np.float32).reshape(-1, 1, 2)
+    pb = b.astype(np.float32).reshape(-1, 1, 2)
+
+    area_a = _poly_area(a)
+    area_b = _poly_area(b)
+    if area_a <= 0.0 or area_b <= 0.0:
+        return 0.0
+
+    inter_area, _ = cv2.intersectConvexConvex(pa, pb)
+    inter = float(max(0.0, inter_area))
     union = area_a + area_b - inter
     if union <= 0.0:
         return 0.0
@@ -29,14 +37,14 @@ def iou_xyxy(a: tuple[float, float, float, float], b: tuple[float, float, float,
 
 
 def greedy_match_one_to_one(
-    gt_boxes: list[tuple[float, float, float, float]],
-    pred_boxes: list[tuple[float, float, float, float]],
+    gt_polys: list[np.ndarray],
+    pred_polys: list[np.ndarray],
     iou_threshold: float,
 ) -> tuple[list[Match], list[int], list[int]]:
     candidates: list[tuple[float, int, int]] = []
-    for gi, g in enumerate(gt_boxes):
-        for pi, p in enumerate(pred_boxes):
-            iou = iou_xyxy(g, p)
+    for gi, g in enumerate(gt_polys):
+        for pi, p in enumerate(pred_polys):
+            iou = polygon_iou(g, p)
             if iou >= iou_threshold:
                 candidates.append((iou, gi, pi))
 
@@ -52,6 +60,6 @@ def greedy_match_one_to_one(
         used_pred.add(pi)
         matches.append(Match(gt_idx=gi, pred_idx=pi, iou=iou))
 
-    unmatched_gt = [i for i in range(len(gt_boxes)) if i not in used_gt]
-    unmatched_pred = [i for i in range(len(pred_boxes)) if i not in used_pred]
+    unmatched_gt = [i for i in range(len(gt_polys)) if i not in used_gt]
+    unmatched_pred = [i for i in range(len(pred_polys)) if i not in used_pred]
     return matches, unmatched_gt, unmatched_pred

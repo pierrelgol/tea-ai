@@ -4,8 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .io import corners_to_xyxy
-from .matching import greedy_match_one_to_one, iou_xyxy
+from .matching import greedy_match_one_to_one, polygon_iou
 from .types import DetectionSummary, ParsedLabel
 
 
@@ -72,10 +71,10 @@ def compute_detection_metrics(
 
     for split, stem, gt_labels, pred_labels, h, w in sample_items:
         gt_total += len(gt_labels)
-        gt_boxes = [corners_to_xyxy(g.corners_norm * np.array([[w, h]], dtype=np.float32)) for g in gt_labels]
-        pred_boxes = [corners_to_xyxy(p.corners_norm * np.array([[w, h]], dtype=np.float32)) for p in pred_labels]
+        gt_polys = [g.corners_norm * np.array([[w, h]], dtype=np.float32) for g in gt_labels]
+        pred_polys = [p.corners_norm * np.array([[w, h]], dtype=np.float32) for p in pred_labels]
 
-        matches, unmatched_gt, unmatched_pred = greedy_match_one_to_one(gt_boxes, pred_boxes, iou_threshold)
+        matches, unmatched_gt, unmatched_pred = greedy_match_one_to_one(gt_polys, pred_polys, iou_threshold)
         sample_tp = len(matches)
         sample_fp = len(unmatched_pred)
         sample_fn = len(unmatched_gt)
@@ -127,19 +126,23 @@ def compute_detection_metrics(
     return summary, per_sample, match_lookup
 
 
-def center_drift_px(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
-    acx = (a[0] + a[2]) * 0.5
-    acy = (a[1] + a[3]) * 0.5
-    bcx = (b[0] + b[2]) * 0.5
-    bcy = (b[1] + b[3]) * 0.5
+def polygon_centroid(poly: np.ndarray) -> tuple[float, float]:
+    return float(np.mean(poly[:, 0])), float(np.mean(poly[:, 1]))
+
+
+def polygon_area(poly: np.ndarray) -> float:
+    x = poly[:, 0]
+    y = poly[:, 1]
+    return float(abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))) * 0.5)
+
+
+def polygon_center_drift_px(a: np.ndarray, b: np.ndarray) -> float:
+    acx, acy = polygon_centroid(a)
+    bcx, bcy = polygon_centroid(b)
     dx = acx - bcx
     dy = acy - bcy
     return float((dx * dx + dy * dy) ** 0.5)
 
 
-def area_xyxy(box: tuple[float, float, float, float]) -> float:
-    return max(0.0, box[2] - box[0]) * max(0.0, box[3] - box[1])
-
-
-def iou_for_boxes(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
-    return iou_xyxy(a, b)
+def iou_for_polygons(a: np.ndarray, b: np.ndarray) -> float:
+    return polygon_iou(a, b)

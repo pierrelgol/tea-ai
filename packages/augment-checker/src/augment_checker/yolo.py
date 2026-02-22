@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import cv2
 import numpy as np
 
 
@@ -9,46 +10,49 @@ import numpy as np
 class YoloLabel:
     class_id: int
     corners_norm: np.ndarray  # (4, 2) normalized points
-    format_name: str  # "bbox" or "obb"
+    format_name: str  # "obb"
 
 
-def _bbox_to_corners_norm(xc: float, yc: float, w: float, h: float) -> np.ndarray:
-    x1 = xc - w / 2.0
-    y1 = yc - h / 2.0
-    x2 = xc + w / 2.0
-    y2 = yc + h / 2.0
-    return np.array(
-        [
-            [x1, y1],
-            [x2, y1],
-            [x2, y2],
-            [x1, y2],
-        ],
-        dtype=np.float32,
-    )
-
-
-def parse_yolo_line(line: str) -> YoloLabel:
+def parse_yolo_line(line: str, *, is_prediction: bool = False) -> YoloLabel:
     parts = line.strip().split()
-    if len(parts) not in (5, 9):
-        raise ValueError("YOLO label line must have 5 (bbox) or 9 (obb) fields")
+    expected = 10 if is_prediction else 9
+    if len(parts) != expected:
+        if is_prediction:
+            raise ValueError("YOLO prediction line must have 10 OBB fields: class x1 y1 x2 y2 x3 y3 x4 y4 conf")
+        raise ValueError("YOLO label line must have 9 OBB fields: class x1 y1 x2 y2 x3 y3 x4 y4")
 
     class_id = int(parts[0])
     vals = [float(x) for x in parts[1:]]
-
-    if len(parts) == 5:
-        corners = _bbox_to_corners_norm(vals[0], vals[1], vals[2], vals[3])
-        return YoloLabel(class_id=class_id, corners_norm=corners, format_name="bbox")
-
-    corners = np.array(vals, dtype=np.float32).reshape(4, 2)
+    coords = vals[:8]
+    corners = np.array(coords, dtype=np.float32).reshape(4, 2)
     return YoloLabel(class_id=class_id, corners_norm=corners, format_name="obb")
 
 
-def load_yolo_label(path) -> YoloLabel:
+def load_yolo_label(path, *, is_prediction: bool = False, conf_threshold: float = 0.0) -> YoloLabel:
     lines = path.read_text(encoding="utf-8").splitlines()
     if not lines:
         raise ValueError(f"Empty label file: {path}")
-    return parse_yolo_line(lines[0])
+    try:
+        if not is_prediction:
+            return parse_yolo_line(lines[0], is_prediction=False)
+
+        best_line: str | None = None
+        best_conf = -1.0
+        for line in lines:
+            parts = line.strip().split()
+            if len(parts) != 10:
+                continue
+            conf = float(parts[9])
+            if conf < conf_threshold:
+                continue
+            if conf > best_conf:
+                best_conf = conf
+                best_line = line
+        if best_line is None:
+            raise ValueError("No prediction above confidence threshold")
+        return parse_yolo_line(best_line, is_prediction=True)
+    except Exception as exc:
+        raise ValueError(f"invalid OBB label at {path}:1: {exc}") from exc
 
 
 def _polygon_area_norm(corners: np.ndarray) -> float:
@@ -86,38 +90,28 @@ def label_to_pixel_corners(label: YoloLabel, image_w: int, image_h: int) -> np.n
     return out.astype(np.float32)
 
 
-def label_to_xyxy(label: YoloLabel, image_w: int, image_h: int) -> tuple[float, float, float, float]:
-    corners = label_to_pixel_corners(label, image_w, image_h)
-    x1 = float(np.min(corners[:, 0]))
-    y1 = float(np.min(corners[:, 1]))
-    x2 = float(np.max(corners[:, 0]))
-    y2 = float(np.max(corners[:, 1]))
-    return x1, y1, x2, y2
-
-
-def iou_xyxy(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
-    ax1, ay1, ax2, ay2 = a
-    bx1, by1, bx2, by2 = b
-    ix1 = max(ax1, bx1)
-    iy1 = max(ay1, by1)
-    ix2 = min(ax2, bx2)
-    iy2 = min(ay2, by2)
-    iw = max(0.0, ix2 - ix1)
-    ih = max(0.0, iy2 - iy1)
-    inter = iw * ih
-    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
-    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+def polygon_iou(a: np.ndarray, b: np.ndarray) -> float:
+    pa = a.astype(np.float32).reshape(-1, 1, 2)
+    pb = b.astype(np.float32).reshape(-1, 1, 2)
+    area_a = _polygon_area_norm(a)
+    area_b = _polygon_area_norm(b)
+    if area_a <= 0.0 or area_b <= 0.0:
+        return 0.0
+    inter_area, _ = cv2.intersectConvexConvex(pa, pb)
+    inter = float(max(0.0, inter_area))
     union = area_a + area_b - inter
     if union <= 0.0:
         return 0.0
     return inter / union
 
 
-def center_drift_px(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
-    acx = (a[0] + a[2]) / 2.0
-    acy = (a[1] + a[3]) / 2.0
-    bcx = (b[0] + b[2]) / 2.0
-    bcy = (b[1] + b[3]) / 2.0
+def polygon_centroid_px(poly: np.ndarray) -> tuple[float, float]:
+    return float(np.mean(poly[:, 0])), float(np.mean(poly[:, 1]))
+
+
+def center_drift_px(a: np.ndarray, b: np.ndarray) -> float:
+    acx, acy = polygon_centroid_px(a)
+    bcx, bcy = polygon_centroid_px(b)
     dx = acx - bcx
     dy = acy - bcy
     return float((dx * dx + dy * dy) ** 0.5)

@@ -51,20 +51,31 @@ def load_yolo_label(label_file: Path) -> tuple[int, YoloBox] | None:
         return None
 
     parts = line.split()
-    if len(parts) != 5:
+    if len(parts) != 9:
         return None
 
     class_id = int(parts[0])
+    coords = [float(x) for x in parts[1:]]
+    xs = coords[0::2]
+    ys = coords[1::2]
+    x1 = min(xs)
+    x2 = max(xs)
+    y1 = min(ys)
+    y2 = max(ys)
     box = YoloBox(
-        x_center=float(parts[1]),
-        y_center=float(parts[2]),
-        width=float(parts[3]),
-        height=float(parts[4]),
+        x_center=(x1 + x2) * 0.5,
+        y_center=(y1 + y2) * 0.5,
+        width=max(0.0, x2 - x1),
+        height=max(0.0, y2 - y1),
     )
     return class_id, box
 
 
 def save_yolo_label(label_file: Path, class_id: int, box: YoloBox) -> None:
     label_file.parent.mkdir(parents=True, exist_ok=True)
-    line = f"{class_id} {box.x_center:.6f} {box.y_center:.6f} {box.width:.6f} {box.height:.6f}\n"
+    x1 = box.x_center - box.width * 0.5
+    y1 = box.y_center - box.height * 0.5
+    x2 = box.x_center + box.width * 0.5
+    y2 = box.y_center + box.height * 0.5
+    line = f"{class_id} {x1:.6f} {y1:.6f} {x2:.6f} {y1:.6f} {x2:.6f} {y2:.6f} {x1:.6f} {y2:.6f}\n"
     label_file.write_text(line, encoding="utf-8")

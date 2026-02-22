@@ -19,7 +19,7 @@ class SampleRecord:
 class ParsedLabel:
     class_id: int
     corners_norm: np.ndarray  # (4, 2)
-    format_name: str  # bbox|obb
+    format_name: str  # obb
     confidence: float
 
 

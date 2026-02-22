@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 
 from .types import GeometryMetrics, SampleRecord
-from .yolo import iou_xyxy, label_to_xyxy, load_yolo_label
+from .yolo import label_to_pixel_corners, load_yolo_label, polygon_iou
 
 
 def _apply_h(H: np.ndarray, points: np.ndarray) -> np.ndarray:
@@ -16,15 +16,6 @@ def _apply_h(H: np.ndarray, points: np.ndarray) -> np.ndarray:
     proj = (H @ pts_h.T).T
     out = proj[:, :2] / proj[:, 2:3]
     return out.astype(np.float32)
-
-
-def _corners_to_xyxy(corners: np.ndarray) -> tuple[float, float, float, float]:
-    return (
-        float(np.min(corners[:, 0])),
-        float(np.min(corners[:, 1])),
-        float(np.max(corners[:, 0])),
-        float(np.max(corners[:, 1])),
-    )
 
 
 def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float) -> tuple[list[GeometryMetrics], dict]:
@@ -39,7 +30,7 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
                     evaluable=False,
                     mean_corner_err_px=None,
                     max_corner_err_px=None,
-                    bbox_iou_meta_vs_label=None,
+                    obb_iou_meta_vs_label=None,
                     is_outlier=False,
                     message="missing image/label/meta",
                 )
@@ -62,10 +53,9 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
                 raise ValueError("failed to read image")
             h, w = img.shape[:2]
 
-            label = load_yolo_label(rec.label_path)
-            label_xyxy = label_to_xyxy(label, w, h)
-            meta_xyxy = _corners_to_xyxy(projected_stored)
-            bbox_iou = iou_xyxy(meta_xyxy, label_xyxy)
+            label = load_yolo_label(rec.label_path, is_prediction=False)
+            label_poly = label_to_pixel_corners(label, w, h)
+            obb_iou = polygon_iou(projected_stored, label_poly)
 
             metrics.append(
                 GeometryMetrics(
@@ -74,7 +64,7 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
                     evaluable=True,
                     mean_corner_err_px=mean_err,
                     max_corner_err_px=max_err,
-                    bbox_iou_meta_vs_label=bbox_iou,
+                    obb_iou_meta_vs_label=obb_iou,
                     is_outlier=mean_err > outlier_threshold_px,
                 )
             )
@@ -86,7 +76,7 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
                     evaluable=False,
                     mean_corner_err_px=None,
                     max_corner_err_px=None,
-                    bbox_iou_meta_vs_label=None,
+                    obb_iou_meta_vs_label=None,
                     is_outlier=False,
                     message=str(exc),
                 )
@@ -94,7 +84,7 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
 
     eval_metrics = [m for m in metrics if m.evaluable and m.mean_corner_err_px is not None]
     errs = [m.mean_corner_err_px for m in eval_metrics if m.mean_corner_err_px is not None]
-    ious = [m.bbox_iou_meta_vs_label for m in eval_metrics if m.bbox_iou_meta_vs_label is not None]
+    ious = [m.obb_iou_meta_vs_label for m in eval_metrics if m.obb_iou_meta_vs_label is not None]
 
     summary = {
         "num_samples": len(metrics),
@@ -104,7 +94,7 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
         "mean_corner_error_px": float(np.mean(errs)) if errs else None,
         "p95_corner_error_px": float(np.percentile(np.array(errs), 95)) if errs else None,
         "max_corner_error_px": float(np.max(errs)) if errs else None,
-        "mean_bbox_iou_meta_vs_label": float(np.mean(ious)) if ious else None,
+        "mean_obb_iou_meta_vs_label": float(np.mean(ious)) if ious else None,
     }
 
     return metrics, summary

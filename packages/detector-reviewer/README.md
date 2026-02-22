@@ -9,6 +9,7 @@ Visual QA tool to compare model inference against ground truth labels.
 - Overlay GT (green) and predictions (red)
 - Filter by split and confidence threshold
 - Navigate samples quickly to inspect failures
+- Strict OBB-only labels and model outputs (fails on bbox formats)
 
 ## Run
 

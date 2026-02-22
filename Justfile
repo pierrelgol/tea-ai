@@ -47,44 +47,46 @@ fclean: clean
 
 fetch-dataset: venv
     @uv sync --all-packages
-    @uv run dataset-fetcher --dataset {{dataset}} --dataset-root dataset
+    @uv run dataset-fetcher --dataset {{dataset}}
 
-label-targets DATASET_ROOT='dataset' TARGETS_SUBDIR='targets': venv
+label-targets: venv
     @uv sync --all-packages
-    @uv run target-labeller --dataset-root {{DATASET_ROOT}} --targets-subdir {{TARGETS_SUBDIR}} --images-dir targets
+    @uv run target-labeller
 
-generate-augmented: venv
+generate-dataset: venv
     @uv sync --all-packages
-    @uv run dataset-generator --dataset {{dataset}} --dataset-root dataset
+    @uv run dataset-generator --dataset {{dataset}}
 
-check-augmented: venv
+check-dataset: venv
     @uv sync --all-packages
-    @uv run augment-checker --dataset {{dataset}} --datasets-base-root dataset/augmented
+    @uv run augment-checker --dataset {{dataset}}
 
-check-augmented-root DATASET_ROOT='dataset/augmented/{{dataset}}': venv
+train: venv
     @uv sync --all-packages
-    @uv run augment-checker --dataset-root {{DATASET_ROOT}} --no-gui
+    @uv run detector-train --dataset {{dataset}}
 
-train-detector: venv
+eval: venv
     @uv sync --all-packages
-    @uv run detector-train --dataset {{dataset}} --datasets-base-root dataset/augmented --artifacts-root artifacts/detector-train
+    @weights=$$(uv run python - <<'PY'
+import json
+from pathlib import Path
 
-train-detector-root DATASET_ROOT='dataset/augmented/{{dataset}}': venv
-    @uv sync --all-packages
-    @uv run detector-train --dataset-root {{DATASET_ROOT}} --artifacts-root artifacts/detector-train
+payload = json.loads(Path("artifacts/detector-train/latest_run.json").read_text(encoding="utf-8"))
+print(payload["weights_best"])
+PY
+); \
+    model_key=$$(uv run python - <<'PY'
+from pathlib import Path
+from detector_grader.data import infer_model_name_from_weights
+import json
 
-infer-detector WEIGHTS MODEL: venv
-    @uv sync --all-packages
-    @uv run detector-infer --weights {{WEIGHTS}} --model-name {{MODEL}} --dataset {{dataset}} --datasets-base-root dataset/augmented --output-root predictions
+payload = json.loads(Path("artifacts/detector-train/latest_run.json").read_text(encoding="utf-8"))
+print(infer_model_name_from_weights(Path(payload["weights_best"])))
+PY
+); \
+    uv run detector-infer --dataset {{dataset}} --weights "$$weights" --model-name "$$model_key"; \
+    uv run detector-grader --dataset {{dataset}} --model "$$model_key" --run-inference false
 
-review-detector: venv
+review MODEL='latest': venv
     @uv sync --all-packages
-    @uv run detector-reviewer --dataset {{dataset}} --datasets-base-root dataset/augmented
-
-grade-detector MODEL='latest': venv
-    @uv sync --all-packages
-    @uv run detector-grader --dataset {{dataset}} --datasets-base-root dataset/augmented --predictions-root predictions --model {{MODEL}}
-
-grade-detector-root DATASET_ROOT='dataset/augmented/{{dataset}}' MODEL='latest': venv
-    @uv sync --all-packages
-    @uv run detector-grader --dataset-root {{DATASET_ROOT}} --predictions-root predictions --artifacts-root artifacts/detector-train --model {{MODEL}}
+    @uv run detector-reviewer --dataset {{dataset}} --model {{MODEL}}

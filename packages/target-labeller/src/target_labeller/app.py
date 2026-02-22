@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -199,106 +198,30 @@ class LabelerWindow(QMainWindow):
     def _export_targets_structure(self) -> int:
         export_images_dir = self.export_root / "images"
         export_labels_dir = self.export_root / "labels"
-        legacy_labels_dir = self.export_root / "lables"
+        if export_images_dir.exists():
+            shutil.rmtree(export_images_dir)
+        if export_labels_dir.exists():
+            shutil.rmtree(export_labels_dir)
         export_images_dir.mkdir(parents=True, exist_ok=True)
         export_labels_dir.mkdir(parents=True, exist_ok=True)
-        if legacy_labels_dir.exists():
-            shutil.rmtree(legacy_labels_dir)
 
-        classes = load_classes(self.classes_file)
-        used_stems: set[str] = set()
-        class_counts: dict[str, int] = {}
-        cleaned_classes: set[str] = set()
         exported_count = 0
 
         for image_path in self.images:
-            source_label = self._resolve_label_file_for_export(image_path)
+            source_label = self._label_file_for(image_path)
             if source_label is None:
                 continue
             label_data = load_yolo_label(source_label)
             if label_data is None:
                 continue
 
-            class_id, _ = label_data
-            class_name = classes[class_id] if 0 <= class_id < len(classes) else f"class_{class_id}"
-            class_slug = self._slugify(class_name)
-            base_stem = class_slug
-            if class_slug not in cleaned_classes:
-                self._remove_old_image_variants(export_images_dir, class_slug, None)
-                self._remove_old_label_variants(export_labels_dir, class_slug, None)
-                cleaned_classes.add(class_slug)
-
-            class_counts[class_slug] = class_counts.get(class_slug, 0) + 1
-            if class_counts[class_slug] > 1:
-                base_stem = f"{class_slug}_{class_counts[class_slug]}"
-            target_stem = self._unique_stem(base_stem, used_stems, export_images_dir, export_labels_dir)
-            used_stems.add(target_stem)
-
-            target_image = export_images_dir / f"{target_stem}{image_path.suffix}"
-            target_label = export_labels_dir / f"{target_stem}.txt"
-
-            self._remove_old_image_variants(export_images_dir, target_stem, target_image)
-            self._remove_old_label_variants(export_labels_dir, target_stem, target_label)
-
+            target_image = export_images_dir / image_path.name
+            target_label = export_labels_dir / f"{image_path.stem}.txt"
             shutil.copy2(image_path, target_image)
             target_label.write_text(source_label.read_text(encoding="utf-8"), encoding="utf-8")
-
-            if source_label.resolve() != target_label.resolve():
-                source_label.unlink(missing_ok=True)
             exported_count += 1
 
         return exported_count
-
-    def _resolve_label_file_for_export(self, image_path: Path) -> Path | None:
-        primary = self._label_file_for(image_path)
-        if primary.exists():
-            return primary
-
-        variants = sorted(self.labels_dir.glob(f"{image_path.stem}_*.txt"))
-        if variants:
-            return variants[0]
-        return None
-
-    @staticmethod
-    def _remove_old_image_variants(export_images_dir: Path, image_stem: str, keep_file: Path | None) -> None:
-        for candidate in export_images_dir.glob(f"{image_stem}_*.*"):
-            if not keep_file or candidate.resolve() != keep_file.resolve():
-                candidate.unlink(missing_ok=True)
-        for candidate in export_images_dir.glob(f"{image_stem}.*"):
-            if not keep_file or candidate.resolve() != keep_file.resolve():
-                candidate.unlink(missing_ok=True)
-
-    @staticmethod
-    def _remove_old_label_variants(export_labels_dir: Path, image_stem: str, keep_file: Path | None) -> None:
-        for candidate in export_labels_dir.glob(f"{image_stem}_*.txt"):
-            if not keep_file or candidate.resolve() != keep_file.resolve():
-                candidate.unlink(missing_ok=True)
-        legacy_primary = export_labels_dir / f"{image_stem}.txt"
-        if not keep_file or legacy_primary.resolve() != keep_file.resolve():
-            legacy_primary.unlink(missing_ok=True)
-
-    @staticmethod
-    def _slugify(value: str) -> str:
-        slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", value.strip()).strip("_").lower()
-        return slug or "class"
-
-    @staticmethod
-    def _unique_stem(
-        base_stem: str,
-        used_stems: set[str],
-        export_images_dir: Path,
-        export_labels_dir: Path,
-    ) -> str:
-        stem = base_stem
-        index = 2
-        while (
-            stem in used_stems
-            or any(export_images_dir.glob(f"{stem}.*"))
-            or (export_labels_dir / f"{stem}.txt").exists()
-        ):
-            stem = f"{base_stem}_{index}"
-            index += 1
-        return stem
 
 
 def run_app(images_dir: Path, labels_dir: Path, classes_file: Path, export_root: Path, exts: list[str]) -> None:

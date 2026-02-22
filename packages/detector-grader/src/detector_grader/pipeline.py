@@ -85,22 +85,6 @@ def resolve_model_source(
         existing = (predictions_root / key / "labels").exists()
         return w, key, existing
 
-    model_path = Path(normalized)
-    if model_path.exists():
-        if model_path.is_file():
-            w = model_path
-            key = infer_model_name_from_weights(w)
-            existing = (predictions_root / key / "labels").exists()
-            return w, key, existing
-        best = model_path / "weights" / "best.pt"
-        if best.exists():
-            key = infer_model_name_from_weights(best)
-            existing = (predictions_root / key / "labels").exists()
-            return best, key, existing
-        key = sanitize_model_name(model_path.name)
-        existing = (predictions_root / key / "labels").exists()
-        return None, key, existing
-
     key = sanitize_model_name(normalized)
     existing = (predictions_root / key / "labels").exists()
     return None, key, existing

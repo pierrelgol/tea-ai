@@ -15,7 +15,5 @@ Canonical evaluation and grading tool for detector runs.
 ```bash
 uv run detector-grader \
   --dataset coco128 \
-  --datasets-base-root dataset/augmented \
-  --predictions-root predictions \
   --model latest
 ```

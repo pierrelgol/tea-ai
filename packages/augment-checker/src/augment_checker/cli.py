@@ -14,24 +14,20 @@ from .reports import write_reports
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Check augmented dataset integrity and geometry")
-    parser.add_argument("--dataset", default="coco8", help="Dataset name under --datasets-base-root")
-    parser.add_argument("--datasets-base-root", type=Path, default=Path("dataset/augmented"))
-    parser.add_argument("--dataset-root", type=Path, default=None, help="Explicit dataset root override")
-    parser.add_argument("--reports-dir", type=Path, default=None, help="Defaults to <dataset-root>/reports")
+    parser.add_argument("--dataset", default="coco8", help="Dataset name under dataset/augmented/")
     parser.add_argument("--outlier-threshold-px", type=float, default=2.0)
     parser.add_argument("--debug-overlays-per-split", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--predictions-root", type=Path, default=None)
-    parser.add_argument("--no-gui", action="store_true")
+    parser.add_argument("--gui", action="store_true")
     args = parser.parse_args()
 
-    dataset_root = args.dataset_root if args.dataset_root is not None else args.datasets_base_root / args.dataset
-    reports_dir = args.reports_dir if args.reports_dir is not None else dataset_root / "reports"
+    dataset_root = Path("dataset/augmented") / args.dataset
+    reports_dir = dataset_root / "reports"
 
     records = index_dataset(dataset_root)
     integrity_issues, integrity_summary = run_integrity_checks(records)
     geometry_metrics, geometry_summary = run_geometry_checks(records, args.outlier_threshold_px)
-    model_reports = run_prediction_checks(records, args.predictions_root)
+    model_reports = run_prediction_checks(records, None)
 
     export_debug_overlays(
         records=records,
@@ -53,7 +49,7 @@ def main() -> None:
     print(f"integrity issues: {integrity_summary['total_issues']}")
     print(f"geometry outliers: {geometry_summary['num_outliers']}")
 
-    if not args.no_gui:
+    if args.gui:
         launch_gui(
             records=records,
             integrity_issues=integrity_issues,

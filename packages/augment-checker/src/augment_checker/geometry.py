@@ -39,22 +39,21 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
 
         try:
             meta = json.loads(rec.meta_path.read_text(encoding="utf-8"))
-            H = np.array(meta["H"], dtype=np.float64)
             img = cv2.imread(str(rec.image_path), cv2.IMREAD_COLOR)
             if img is None:
                 raise ValueError("failed to read image")
             h, w = img.shape[:2]
 
             labels = load_yolo_labels(rec.label_path, is_prediction=False)
+            targets = meta.get("targets")
+            if not isinstance(targets, list) or not targets:
+                raise ValueError("metadata missing targets list")
+
             projected_list: list[np.ndarray] = []
             canonical_list: list[np.ndarray] = []
-            if "targets" in meta and isinstance(meta["targets"], list):
-                for t in meta["targets"]:
-                    projected_list.append(np.array(t["projected_corners_px"], dtype=np.float32))
-                    canonical_list.append(np.array(t["canonical_corners_px"], dtype=np.float32))
-            else:
-                projected_list.append(np.array(meta["projected_corners_px"], dtype=np.float32))
-                canonical_list.append(np.array(meta["canonical_corners_px"], dtype=np.float32))
+            for t in targets:
+                projected_list.append(np.array(t["projected_corners_px"], dtype=np.float32))
+                canonical_list.append(np.array(t["canonical_corners_px"], dtype=np.float32))
 
             if len(projected_list) != len(labels):
                 raise ValueError(f"label/meta count mismatch: labels={len(labels)} meta_targets={len(projected_list)}")
@@ -64,7 +63,7 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
             ious: list[float] = []
             for idx, projected_stored in enumerate(projected_list):
                 canonical = canonical_list[idx]
-                H_obj = H if len(projected_list) == 1 else np.array(meta["targets"][idx]["H"], dtype=np.float64)
+                H_obj = np.array(targets[idx]["H"], dtype=np.float64)
                 projected_est = _apply_h(H_obj, canonical)
                 corner_err = np.linalg.norm(projected_est - projected_stored, axis=1)
                 mean_errs.append(float(np.mean(corner_err)))

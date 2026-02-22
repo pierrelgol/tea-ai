@@ -15,12 +15,6 @@ Simple Qt GUI tool to label one bounding box per image and export YOLO OBB forma
 uv run target-labeller
 ```
 
-Or select a different targets location:
-
-```bash
-uv run target-labeller --dataset-root dataset --targets-subdir targets
-```
-
 ## Controls
 
 - Click + drag on image: draw/replace bounding box

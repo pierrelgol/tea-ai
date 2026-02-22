@@ -45,13 +45,11 @@ def export_debug_overlays(records: list[SampleRecord], reports_dir: Path, n_per_
 
             meta = json.loads(rec.meta_path.read_text(encoding="utf-8"))
             targets = meta.get("targets")
-            if isinstance(targets, list) and targets:
-                for i, t in enumerate(targets):
-                    corners = np.array(t["projected_corners_px"], dtype=np.float32)
-                    _draw_polygon(img, corners, (0, 0, 255), f"M{i+1}")
-            else:
-                corners = np.array(meta["projected_corners_px"], dtype=np.float32)
-                _draw_polygon(img, corners, (0, 0, 255), "M1")
+            if not isinstance(targets, list) or not targets:
+                continue
+            for i, t in enumerate(targets):
+                corners = np.array(t["projected_corners_px"], dtype=np.float32)
+                _draw_polygon(img, corners, (0, 0, 255), f"M{i+1}")
 
             out_path = out_dir / f"{rec.stem}.jpg"
             cv2.imwrite(str(out_path), img)

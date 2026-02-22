@@ -14,7 +14,5 @@ Responsibilities:
 uv run detector-infer \
   --weights artifacts/detector-train/runs/my-run/weights/best.pt \
   --dataset coco8 \
-  --datasets-base-root dataset/augmented \
-  --output-root predictions \
   --model-name yolo11n-obb
 ```

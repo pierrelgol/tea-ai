@@ -10,20 +10,17 @@ from .trainer import train_detector
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train detector model (lean pipeline)")
-    parser.add_argument("--dataset", default="coco8", help="Dataset name under --datasets-base-root")
-    parser.add_argument("--datasets-base-root", type=Path, default=Path("dataset/augmented"))
-    parser.add_argument("--dataset-root", type=Path, default=None, help="Explicit dataset root override")
-    parser.add_argument("--artifacts-root", type=Path, default=Path("artifacts/detector-train"))
+    parser.add_argument("--dataset", default="coco8", help="Dataset name under dataset/augmented/")
     parser.add_argument("--model", default="yolo11n-obb.pt")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    dataset_root = args.dataset_root if args.dataset_root is not None else args.datasets_base_root / args.dataset
+    dataset_root = Path("dataset/augmented") / args.dataset
     run_name = datetime.utcnow().strftime("run-%Y%m%d-%H%M%S")
 
     config = TrainConfig(
         dataset_root=dataset_root,
-        artifacts_root=args.artifacts_root,
+        artifacts_root=Path("artifacts/detector-train"),
         model=args.model,
         name=run_name,
         seed=args.seed,

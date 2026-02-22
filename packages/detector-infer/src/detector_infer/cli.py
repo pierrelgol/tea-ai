@@ -10,35 +10,26 @@ from .infer import run_inference
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run detector inference and export YOLO predictions")
     parser.add_argument("--weights", type=Path, required=True)
-    parser.add_argument("--dataset", default="coco8", help="Dataset name under --datasets-base-root")
-    parser.add_argument("--datasets-base-root", type=Path, default=Path("dataset/augmented"))
-    parser.add_argument("--dataset-root", type=Path, default=None, help="Explicit dataset root override")
-    parser.add_argument("--output-root", type=Path, default=Path("predictions"))
+    parser.add_argument("--dataset", default="coco8", help="Dataset name under dataset/augmented/")
     parser.add_argument("--model-name", required=True)
-    parser.add_argument("--imgsz", type=int, default=640)
-    parser.add_argument("--device", default="auto")
     parser.add_argument("--conf-threshold", type=float, default=0.25)
-    parser.add_argument("--iou-threshold", type=float, default=0.7)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--splits", default="train,val")
-    parser.add_argument("--save-empty", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
 
-    splits = [s.strip() for s in args.splits.split(",") if s.strip()]
-    dataset_root = args.dataset_root if args.dataset_root is not None else args.datasets_base_root / args.dataset
+    dataset_root = Path("dataset/augmented") / args.dataset
 
     cfg = InferConfig(
         weights=args.weights,
         dataset_root=dataset_root,
-        output_root=args.output_root,
+        output_root=Path("predictions"),
         model_name=args.model_name,
-        imgsz=args.imgsz,
-        device=args.device,
+        imgsz=640,
+        device="auto",
         conf_threshold=args.conf_threshold,
-        iou_threshold=args.iou_threshold,
+        iou_threshold=0.7,
         seed=args.seed,
-        splits=splits,
-        save_empty=args.save_empty,
+        splits=["train", "val"],
+        save_empty=True,
     )
 
     summary = run_inference(cfg)

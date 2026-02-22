@@ -6,10 +6,6 @@ from pathlib import Path
 from .pipeline import GradingConfig, run_grading
 
 
-def _split_csv(value: str) -> list[str]:
-    return [s.strip() for s in value.split(",") if s.strip()]
-
-
 def _fmt_float(v: float | None, digits: int = 4) -> str:
     if v is None:
         return "n/a"
@@ -18,47 +14,33 @@ def _fmt_float(v: float | None, digits: int = 4) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Grade detector runs from strict OBB geometry quality")
-    parser.add_argument("--dataset", default="coco8", help="Dataset name under --datasets-base-root")
-    parser.add_argument("--datasets-base-root", type=Path, default=Path("dataset/augmented"))
-    parser.add_argument("--dataset-root", type=Path, default=None, help="Explicit dataset root override")
-    parser.add_argument("--predictions-root", type=Path, default=Path("predictions"))
-    parser.add_argument("--model", default="latest", help="Model source: latest|.|weights path|run dir|prediction model key")
-    parser.add_argument("--weights", type=Path, default=None, help="Explicit weights path override")
-    parser.add_argument("--artifacts-root", type=Path, default=Path("artifacts/detector-train"))
+    parser.add_argument("--dataset", default="coco8", help="Dataset name under dataset/augmented/")
+    parser.add_argument("--model", default="latest", help="Prediction model key or latest")
     parser.add_argument("--run-inference", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--splits", default="train,val")
-    parser.add_argument("--imgsz", type=int, default=640)
-    parser.add_argument("--device", default="auto")
     parser.add_argument("--conf-threshold", type=float, default=0.25, help="Confidence threshold for infer + grading")
-    parser.add_argument("--infer-iou-threshold", type=float, default=0.7)
-    parser.add_argument("--match-iou-threshold", type=float, default=0.5)
-    parser.add_argument("--weights-json", type=Path, default=None, help="Scoring weight profile JSON")
-    parser.add_argument("--reports-dir", type=Path, default=None)
-    parser.add_argument("--strict-obb", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--max-samples", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    dataset_root = args.dataset_root if args.dataset_root is not None else args.datasets_base_root / args.dataset
+    dataset_root = Path("dataset/augmented") / args.dataset
 
     result = run_grading(
         GradingConfig(
             dataset_root=dataset_root,
-            predictions_root=args.predictions_root,
-            artifacts_root=args.artifacts_root,
-            reports_dir=args.reports_dir,
+            predictions_root=Path("predictions"),
+            artifacts_root=Path("artifacts/detector-train"),
+            reports_dir=None,
             model=args.model,
-            weights=args.weights,
+            weights=None,
             run_inference=args.run_inference,
-            splits=_split_csv(args.splits),
-            imgsz=args.imgsz,
-            device=args.device,
+            splits=["train", "val"],
+            imgsz=640,
+            device="auto",
             conf_threshold=args.conf_threshold,
-            infer_iou_threshold=args.infer_iou_threshold,
-            match_iou_threshold=args.match_iou_threshold,
-            weights_json=args.weights_json,
-            strict_obb=args.strict_obb,
-            max_samples=args.max_samples,
+            infer_iou_threshold=0.7,
+            match_iou_threshold=0.5,
+            weights_json=None,
+            strict_obb=True,
+            max_samples=None,
             seed=args.seed,
         )
     )
@@ -69,7 +51,7 @@ def main() -> None:
     print("Model Source")
     print(f"- resolved_model_key: {result['model_key']}")
     print(f"- weights: {result['weights_path'] or 'N/A (using existing predictions)'}")
-    print(f"- predictions_root: {args.predictions_root / result['model_key'] / 'labels'}")
+    print(f"- predictions_root: {Path('predictions') / result['model_key'] / 'labels'}")
     print("")
     print("Inference")
     if result["inference"] is None:

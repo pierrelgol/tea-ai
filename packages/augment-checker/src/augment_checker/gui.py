@@ -157,14 +157,10 @@ class CheckerWindow(QMainWindow):
                 import numpy as np
 
                 targets = meta.get("targets")
-                if isinstance(targets, list) and targets:
-                    for t in targets:
-                        corners = t.get("projected_corners_px", [])
-                        if len(corners) == 4:
-                            poly = np.array(corners, dtype=np.int32).reshape((-1, 1, 2))
-                            cv2.polylines(img, [poly], True, (0, 0, 255), 2)
-                else:
-                    corners = meta.get("projected_corners_px", [])
+                if not isinstance(targets, list):
+                    targets = []
+                for t in targets:
+                    corners = t.get("projected_corners_px", [])
                     if len(corners) == 4:
                         poly = np.array(corners, dtype=np.int32).reshape((-1, 1, 2))
                         cv2.polylines(img, [poly], True, (0, 0, 255), 2)

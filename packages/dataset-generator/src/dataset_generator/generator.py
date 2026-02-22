@@ -243,16 +243,6 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                     "photometric_applied": photometric_applied,
                     "targets": [p.placement for p in placed],
                 }
-                # Backward-compatible top-level fields from first target.
-                first = placed[0].placement
-                metadata["target_image"] = first["target_image"]
-                metadata["target_class_name"] = first["target_class_name"]
-                metadata["target_class_id_local"] = first["target_class_id_local"]
-                metadata["target_class_id_exported"] = first["target_class_id_exported"]
-                metadata["H"] = first["H"]
-                metadata["canonical_corners_px"] = first["canonical_corners_px"]
-                metadata["projected_corners_px"] = first["projected_corners_px"]
-                metadata["projected_corners_yolo_obb"] = first["projected_corners_yolo_obb"]
                 write_metadata(meta_out_path, metadata)
 
                 results.append(

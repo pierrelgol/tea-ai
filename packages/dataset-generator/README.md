@@ -5,13 +5,7 @@ Lean synthetic dataset generator.
 ## Run
 
 ```bash
-uv run dataset-generator --dataset coco8 --dataset-root dataset --seed 42
-```
-
-Optional output override:
-
-```bash
-uv run dataset-generator --dataset coco128 --output-root dataset/augmented/coco128
+uv run dataset-generator --dataset coco8 --seed 42
 ```
 
 ## Data contract

@@ -32,7 +32,7 @@ def main() -> None:
             model=args.model,
             weights=None,
             run_inference=args.run_inference,
-            splits=["train", "val"],
+            splits=["val"],
             imgsz=640,
             device="auto",
             conf_threshold=args.conf_threshold,

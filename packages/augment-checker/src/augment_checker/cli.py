@@ -12,6 +12,9 @@ from .overlays import export_debug_overlays
 from .predictions import run_prediction_checks
 from .reports import write_reports
 
+MAX_OUTLIER_RATE = 0.02
+MAX_MEAN_CORNER_ERROR_PX = 1.5
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Check augmented dataset integrity and geometry")
@@ -51,6 +54,23 @@ def main() -> None:
     print(f"checked {len(records)} samples")
     print(f"integrity issues: {integrity_summary['total_issues']}")
     print(f"geometry outliers: {geometry_summary['num_outliers']}")
+
+    failures: list[str] = []
+    if integrity_summary.get("total_issues", 0) > 0:
+        failures.append(f"integrity issues present: {integrity_summary['total_issues']}")
+    if float(geometry_summary.get("outlier_rate", 0.0) or 0.0) > MAX_OUTLIER_RATE:
+        failures.append(
+            f"outlier_rate={geometry_summary.get('outlier_rate')} exceeds max={MAX_OUTLIER_RATE}"
+        )
+    mean_corner_error_px = geometry_summary.get("mean_corner_error_px")
+    if mean_corner_error_px is not None and float(mean_corner_error_px) > MAX_MEAN_CORNER_ERROR_PX:
+        failures.append(
+            f"mean_corner_error_px={mean_corner_error_px} exceeds max={MAX_MEAN_CORNER_ERROR_PX}"
+        )
+    if failures:
+        for failure in failures:
+            print(f"CHECK FAILED: {failure}")
+        raise SystemExit(2)
 
     if args.gui:
         launch_gui(

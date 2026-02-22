@@ -1,5 +1,5 @@
 set shell := ["bash", "-cu"]
-dataset := "coco128"
+dataset := "coco1024"
 
 default:
     @just --list
@@ -73,7 +73,7 @@ eval: venv
     @latest_json="artifacts/detector-train/latest_run.json"; \
     weights=$(uv run python -c "import json,sys; print(json.loads(open(sys.argv[1], encoding='utf-8').read())['weights_best'])" "$latest_json"); \
     model_key=$(uv run python -c "import json,sys; from pathlib import Path; from detector_grader.data import infer_model_name_from_weights; payload=json.loads(open(sys.argv[1], encoding='utf-8').read()); print(infer_model_name_from_weights(Path(payload['weights_best'])))" "$latest_json"); \
-    uv run detector-infer --dataset {{dataset}} --weights "$weights" --model-name "$model_key"; \
+    uv run detector-infer --dataset {{dataset}} --weights "$weights" --model-name "$model_key" && \
     uv run detector-grader --dataset {{dataset}} --model "$model_key" --no-run-inference
 
 review: venv

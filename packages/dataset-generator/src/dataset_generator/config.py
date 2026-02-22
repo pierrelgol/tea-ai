@@ -25,14 +25,18 @@ class GeneratorConfig:
 
     targets_per_image_min: int = 1
     targets_per_image_max: int = 3
+    empty_sample_prob: float = 0.15
     max_occlusion_ratio: float = 0.60
     allow_partial_visibility: bool = True
 
     scale_min: float = 0.12
     scale_max: float = 0.65
+    crowd_scale_floor: float = 0.30
     translate_frac: float = 0.35
     perspective_jitter: float = 0.12
     min_quad_area_frac: float = 0.0015
+    min_target_area_px: float = 24.0
+    min_edge_length_px: float = 4.0
     max_attempts: int = 50
     edge_bias_prob: float = 0.40
     edge_band_frac: float = 0.22
@@ -83,8 +87,16 @@ class GeneratorConfig:
             raise ValueError("targets_per_image_min must be >= 1")
         if self.targets_per_image_max < self.targets_per_image_min:
             raise ValueError("targets_per_image_max must be >= targets_per_image_min")
+        if self.empty_sample_prob < 0 or self.empty_sample_prob > 1:
+            raise ValueError("empty_sample_prob must be in [0,1]")
         if self.max_occlusion_ratio < 0 or self.max_occlusion_ratio >= 1:
             raise ValueError("max_occlusion_ratio must be in [0,1)")
+        if self.crowd_scale_floor <= 0 or self.crowd_scale_floor > 1:
+            raise ValueError("crowd_scale_floor must be in (0,1]")
+        if self.min_target_area_px <= 0:
+            raise ValueError("min_target_area_px must be > 0")
+        if self.min_edge_length_px <= 0:
+            raise ValueError("min_edge_length_px must be > 0")
         for name, value in (
             ("blur_prob", self.blur_prob),
             ("motion_blur_prob", self.motion_blur_prob),

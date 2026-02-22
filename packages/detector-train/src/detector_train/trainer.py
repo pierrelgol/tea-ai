@@ -202,7 +202,7 @@ def _run_periodic_eval(
             model=run_name,
             weights=weights_last,
             run_inference=True,
-            splits=["train", "val"],
+            splits=["val"],
             imgsz=config.imgsz,
             device=device,
             conf_threshold=config.eval_conf_threshold,
@@ -234,6 +234,7 @@ def _run_periodic_eval(
     return {
         "status": "ok",
         "epoch": epoch,
+        "weights_last": str(weights_last),
         "grading": result,
     }
 
@@ -314,11 +315,19 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             shutil.rmtree(eval_reports_root)
 
         model = YOLO(config.model)
+        model_task = str(getattr(model, "task", "")).strip().lower()
+        if model_task != "obb":
+            raise RuntimeError(
+                f"model is not an OBB model (task={model_task!r}): {config.model}. "
+                "Use an OBB checkpoint."
+            )
         safe_warmup_epochs = float(config.warmup_epochs) if config.warmup_epochs is not None else 0.0
         safe_fliplr = float(config.fliplr) if config.fliplr is not None else 0.0
         safe_flipud = float(config.flipud) if config.flipud is not None else 0.0
         safe_copy_paste = float(config.copy_paste) if config.copy_paste is not None else 0.0
         periodic_eval: list[dict[str, Any]] = []
+        best_geo_score = -1.0
+        best_geo_weights: Path | None = None
         last_eval_epoch = -1
         logged_keys_by_step: dict[int, set[str]] = {}
 
@@ -333,7 +342,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             sent.update(unique_payload.keys())
 
         def _on_fit_epoch_end(trainer) -> None:
-            nonlocal last_eval_epoch
+            nonlocal last_eval_epoch, best_geo_score, best_geo_weights
 
             current_epoch = int(getattr(trainer, "epoch", -1)) + 1
             if current_epoch <= 0:
@@ -347,7 +356,8 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             if current_epoch == last_eval_epoch:
                 return
 
-            should_eval = (current_epoch % config.eval_interval_epochs == 0) or (current_epoch == config.epochs)
+            warmup_done = current_epoch >= int(max(1, round(config.warmup_epochs)))
+            should_eval = ((warmup_done and current_epoch % config.eval_interval_epochs == 0) or (current_epoch == config.epochs))
             if not should_eval:
                 return
 
@@ -362,6 +372,16 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                     wandb_run=wandb_run,
                 )
                 periodic_eval.append(eval_result)
+                grade = eval_result.get("grading", {}).get("aggregate", {}).get("run_grade_0_100")
+                weights_last_path_raw = eval_result.get("weights_last")
+                if grade is not None and weights_last_path_raw is not None:
+                    weights_last_path = Path(weights_last_path_raw)
+                    if weights_last_path.exists() and float(grade) >= best_geo_score:
+                        best_geo_score = float(grade)
+                        best_geo_weights = save_dir_cb / "weights" / "best_geo.pt"
+                        best_geo_weights.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(weights_last_path, best_geo_weights)
+                        _log_step_payload(current_epoch, {"eval/best_geo_score": best_geo_score})
             except Exception as exc:
                 periodic_eval.append(
                     {
@@ -420,6 +440,12 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         weights_dir = save_dir / "weights"
         best_weights = weights_dir / "best.pt"
         last_weights = weights_dir / "last.pt"
+        if best_geo_weights is None:
+            fallback_best_geo = weights_dir / "best_geo.pt"
+            if best_weights.exists():
+                shutil.copy2(best_weights, fallback_best_geo)
+                best_geo_weights = fallback_best_geo
+        selected_best = best_geo_weights if best_geo_weights is not None else best_weights
         results_csv = save_dir / "results.csv"
 
         metrics = _extract_last_metrics(results_csv)
@@ -434,7 +460,9 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             "artifacts": {
                 "data_yaml": str(data_yaml_path),
                 "save_dir": str(save_dir),
-                "weights_best": str(best_weights),
+                "weights_best": str(selected_best),
+                "weights_best_ultralytics": str(best_weights),
+                "weights_best_geo": str(best_geo_weights) if best_geo_weights is not None else None,
                 "weights_last": str(last_weights),
                 "results_csv": str(results_csv),
             },

@@ -28,7 +28,7 @@ def main() -> None:
         conf_threshold=args.conf_threshold,
         iou_threshold=0.7,
         seed=args.seed,
-        splits=["train", "val"],
+        splits=["val"],
         save_empty=True,
     )
 

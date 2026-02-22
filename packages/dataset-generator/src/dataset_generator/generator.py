@@ -10,7 +10,13 @@ import cv2
 import numpy as np
 
 from .config import GeneratorConfig
-from .geometry import apply_homography_to_points, corners_px_to_yolo_obb
+from .geometry import (
+    apply_homography_to_points,
+    corners_px_to_yolo_obb,
+    is_convex_quad,
+    polygon_area,
+    quad_inside_bounds,
+)
 from .homography import HomographyParams, sample_valid_homography
 from .io import (
     CanonicalTarget,
@@ -70,13 +76,30 @@ def _scaled_homography_params_for_target_count(
     crowd_ratio = (n_targets - min_targets) / float(max_targets - min_targets)
     crowd_ratio = float(np.clip(crowd_ratio, 0.0, 1.0))
 
-    # At max crowd, targets are 30% of baseline size bounds.
-    min_scale_factor = 0.30
+    # At max crowd, targets are scaled down to configured floor.
+    min_scale_factor = float(config.crowd_scale_floor)
     scale_factor = 1.0 - (1.0 - min_scale_factor) * crowd_ratio
 
     scaled_min = max(0.05, base.scale_min * scale_factor)
     scaled_max = max(scaled_min, base.scale_max * scale_factor)
     return replace(base, scale_min=scaled_min, scale_max=scaled_max)
+
+
+def _is_valid_projected_obb(projected_corners: np.ndarray, image_w: int, image_h: int, config: GeneratorConfig) -> bool:
+    if projected_corners.shape != (4, 2):
+        return False
+    if not is_convex_quad(projected_corners):
+        return False
+    if not quad_inside_bounds(projected_corners, image_w, image_h):
+        return False
+    if polygon_area(projected_corners) < config.min_target_area_px:
+        return False
+    for i in range(4):
+        p0 = projected_corners[i]
+        p1 = projected_corners[(i + 1) % 4]
+        if float(np.linalg.norm(p1 - p0)) < config.min_edge_length_px:
+            return False
+    return True
 
 
 def _try_place_target(
@@ -98,6 +121,8 @@ def _try_place_target(
         params=homography_params,
     )
     projected_corners = apply_homography_to_points(hs.H, target.canonical_corners_px)
+    if not _is_valid_projected_obb(projected_corners, bg_w, bg_h, config):
+        return None
     projected_corners_norm = corners_px_to_yolo_obb(projected_corners, bg_w, bg_h)
 
     warped_target, warped_mask = warp_target_and_mask(
@@ -201,7 +226,11 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
             bg_h, bg_w = background.shape[:2]
 
             for sample_idx in range(config.samples_per_background):
-                n_targets = int(rng.integers(config.targets_per_image_min, config.targets_per_image_max + 1))
+                planned_empty = bool(rng.random() < config.empty_sample_prob)
+                if planned_empty:
+                    n_targets = 0
+                else:
+                    n_targets = int(rng.integers(config.targets_per_image_min, config.targets_per_image_max + 1))
                 sample_homography_params = _scaled_homography_params_for_target_count(
                     base=homography_params,
                     n_targets=n_targets,
@@ -252,7 +281,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                     occupancy_mask = occupancy_mask | (warped_mask > 0)
                     placed.append(placed_target)
 
-                if not placed:
+                if not placed and n_targets > 0:
                     continue
 
                 composited, photometric_applied = apply_photometric_stack(composited, rng=rng, config=config)
@@ -273,6 +302,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                     "background_dataset_name": config.background_dataset_name,
                     "background_image": str(bg_path),
                     "num_targets": len(placed),
+                    "planned_empty": planned_empty,
                     "photometric_applied": photometric_applied,
                     "targets": [p.placement for p in placed],
                 }

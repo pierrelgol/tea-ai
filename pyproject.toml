@@ -13,6 +13,7 @@ dependencies = [
   "dataset-generator",
   "dataset-fetcher",
   "target-labeller",
+  "huggingface-hub>=1.4.1",
 ]
 
 [tool.uv.workspace]

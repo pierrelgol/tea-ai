@@ -16,25 +16,25 @@ class TrainConfig:
     device: str = "auto"
     project: Path = Path("artifacts/detector-train/runs")
 
-    epochs: int = 50
+    epochs: int = 100
     imgsz: int = 640
-    batch: int = 16
+    batch: int = 6
     workers: int = 8
-    patience: int = 50
+    patience: int = 40
 
     optimizer: str = "AdamW"
-    lr0: float = 0.002
+    lr0: float = 0.0015
     lrf: float = 0.01
     weight_decay: float = 0.0005
-    warmup_epochs: float = 3.0
+    warmup_epochs: float = 5.0
     cos_lr: bool = True
 
-    close_mosaic: int = 20
-    mosaic: float = 0.45
-    mixup: float = 0.0
+    close_mosaic: int = 10
+    mosaic: float = 0.6
+    mixup: float = 0.05
     degrees: float = 1.5
-    translate: float = 0.06
-    scale: float = 0.35
+    translate: float = 0.04
+    scale: float = 0.25
     shear: float = 0.0
     perspective: float = 0.0
     hsv_h: float = 0.010
@@ -57,7 +57,7 @@ class TrainConfig:
     wandb_log_every_epoch: bool = True
 
     eval_enabled: bool = True
-    eval_interval_epochs: int = 5
+    eval_interval_epochs: int = 2
     eval_iou_threshold: float = 0.5
     eval_conf_threshold: float = 0.25
     eval_viz_samples: int = 0

@@ -31,7 +31,9 @@ def parse_yolo_line(line: str, *, is_prediction: bool = False) -> YoloLabel:
 def load_yolo_labels(path, *, is_prediction: bool = False, conf_threshold: float = 0.0) -> list[YoloLabel]:
     lines = path.read_text(encoding="utf-8").splitlines()
     if not lines:
-        raise ValueError(f"Empty label file: {path}")
+        if is_prediction:
+            raise ValueError(f"Empty label file: {path}")
+        return []
     out: list[YoloLabel] = []
     try:
         if not is_prediction:
@@ -39,8 +41,6 @@ def load_yolo_labels(path, *, is_prediction: bool = False, conf_threshold: float
                 if not line.strip():
                     continue
                 out.append(parse_yolo_line(line, is_prediction=False))
-            if not out:
-                raise ValueError("No valid label lines")
             return out
 
         for line_no, line in enumerate(lines, start=1):

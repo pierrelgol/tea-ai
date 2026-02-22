@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 
 from .types import GeometryMetrics, SampleRecord
-from .yolo import label_to_pixel_corners, load_yolo_label, polygon_iou
+from .yolo import label_to_pixel_corners, load_yolo_labels, polygon_iou
 
 
 def _apply_h(H: np.ndarray, points: np.ndarray) -> np.ndarray:
@@ -40,32 +40,47 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
         try:
             meta = json.loads(rec.meta_path.read_text(encoding="utf-8"))
             H = np.array(meta["H"], dtype=np.float64)
-            canonical = np.array(meta["canonical_corners_px"], dtype=np.float32)
-            projected_stored = np.array(meta["projected_corners_px"], dtype=np.float32)
-
-            projected_est = _apply_h(H, canonical)
-            corner_err = np.linalg.norm(projected_est - projected_stored, axis=1)
-            mean_err = float(np.mean(corner_err))
-            max_err = float(np.max(corner_err))
-
             img = cv2.imread(str(rec.image_path), cv2.IMREAD_COLOR)
             if img is None:
                 raise ValueError("failed to read image")
             h, w = img.shape[:2]
 
-            label = load_yolo_label(rec.label_path, is_prediction=False)
-            label_poly = label_to_pixel_corners(label, w, h)
-            obb_iou = polygon_iou(projected_stored, label_poly)
+            labels = load_yolo_labels(rec.label_path, is_prediction=False)
+            projected_list: list[np.ndarray] = []
+            canonical_list: list[np.ndarray] = []
+            if "targets" in meta and isinstance(meta["targets"], list):
+                for t in meta["targets"]:
+                    projected_list.append(np.array(t["projected_corners_px"], dtype=np.float32))
+                    canonical_list.append(np.array(t["canonical_corners_px"], dtype=np.float32))
+            else:
+                projected_list.append(np.array(meta["projected_corners_px"], dtype=np.float32))
+                canonical_list.append(np.array(meta["canonical_corners_px"], dtype=np.float32))
+
+            if len(projected_list) != len(labels):
+                raise ValueError(f"label/meta count mismatch: labels={len(labels)} meta_targets={len(projected_list)}")
+
+            mean_errs: list[float] = []
+            max_errs: list[float] = []
+            ious: list[float] = []
+            for idx, projected_stored in enumerate(projected_list):
+                canonical = canonical_list[idx]
+                H_obj = H if len(projected_list) == 1 else np.array(meta["targets"][idx]["H"], dtype=np.float64)
+                projected_est = _apply_h(H_obj, canonical)
+                corner_err = np.linalg.norm(projected_est - projected_stored, axis=1)
+                mean_errs.append(float(np.mean(corner_err)))
+                max_errs.append(float(np.max(corner_err)))
+                label_poly = label_to_pixel_corners(labels[idx], w, h)
+                ious.append(polygon_iou(projected_stored, label_poly))
 
             metrics.append(
                 GeometryMetrics(
                     split=rec.split,
                     stem=rec.stem,
                     evaluable=True,
-                    mean_corner_err_px=mean_err,
-                    max_corner_err_px=max_err,
-                    obb_iou_meta_vs_label=obb_iou,
-                    is_outlier=mean_err > outlier_threshold_px,
+                    mean_corner_err_px=float(np.mean(mean_errs)),
+                    max_corner_err_px=float(np.max(max_errs)),
+                    obb_iou_meta_vs_label=float(np.mean(ious)),
+                    is_outlier=float(np.mean(mean_errs)) > outlier_threshold_px,
                 )
             )
         except Exception as exc:

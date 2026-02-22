@@ -6,13 +6,33 @@ import cv2
 import numpy as np
 
 from .types import ModelMetrics, ModelSampleMetric, SampleRecord
-from .yolo import center_drift_px, label_to_pixel_corners, load_yolo_label, polygon_iou
+from .yolo import center_drift_px, label_to_pixel_corners, load_yolo_labels, polygon_iou
 
 
 def _prediction_models(predictions_root: Path) -> list[Path]:
     if not predictions_root.exists():
         return []
     return sorted([p for p in predictions_root.iterdir() if p.is_dir()])
+
+
+def _greedy_iou_match(gt_polys: list[np.ndarray], pr_polys: list[np.ndarray]) -> list[tuple[int, int]]:
+    candidates: list[tuple[float, int, int]] = []
+    for gi, g in enumerate(gt_polys):
+        for pi, p in enumerate(pr_polys):
+            candidates.append((polygon_iou(g, p), gi, pi))
+    candidates.sort(key=lambda x: (-x[0], x[1], x[2]))
+    used_g: set[int] = set()
+    used_p: set[int] = set()
+    out: list[tuple[int, int]] = []
+    for iou, gi, pi in candidates:
+        if iou <= 0:
+            continue
+        if gi in used_g or pi in used_p:
+            continue
+        used_g.add(gi)
+        used_p.add(pi)
+        out.append((gi, pi))
+    return out
 
 
 def run_prediction_checks(records: list[SampleRecord], predictions_root: Path | None) -> list[ModelMetrics]:
@@ -48,16 +68,35 @@ def run_prediction_checks(records: list[SampleRecord], predictions_root: Path | 
                 continue
             h, w = img.shape[:2]
 
-            gt = load_yolo_label(rec.label_path, is_prediction=False)
-            pred = load_yolo_label(pred_label, is_prediction=True, conf_threshold=0.0)
-            gt_poly = label_to_pixel_corners(gt, w, h)
-            pred_poly = label_to_pixel_corners(pred, w, h)
+            gt_labels = load_yolo_labels(rec.label_path, is_prediction=False)
+            pred_labels = load_yolo_labels(pred_label, is_prediction=True, conf_threshold=0.0)
+            gt_polys = [label_to_pixel_corners(g, w, h) for g in gt_labels]
+            pred_polys = [label_to_pixel_corners(p, w, h) for p in pred_labels]
 
-            iou = polygon_iou(gt_poly, pred_poly)
-            drift = center_drift_px(gt_poly, pred_poly)
-            sample_metrics.append(ModelSampleMetric(rec.split, rec.stem, iou, drift, False))
-            ious.append(iou)
-            drifts.append(drift)
+            matches = _greedy_iou_match(gt_polys, pred_polys)
+            if not matches:
+                sample_metrics.append(ModelSampleMetric(rec.split, rec.stem, None, None, True))
+                misses += 1
+                continue
+
+            row_ious: list[float] = []
+            row_drifts: list[float] = []
+            for gi, pi in matches:
+                iou = polygon_iou(gt_polys[gi], pred_polys[pi])
+                drift = center_drift_px(gt_polys[gi], pred_polys[pi])
+                row_ious.append(iou)
+                row_drifts.append(drift)
+                ious.append(iou)
+                drifts.append(drift)
+            sample_metrics.append(
+                ModelSampleMetric(
+                    rec.split,
+                    rec.stem,
+                    float(np.mean(row_ious)),
+                    float(np.mean(row_drifts)),
+                    False,
+                )
+            )
 
         total = len(records) if records else 1
         report = ModelMetrics(

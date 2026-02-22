@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from .types import GeometryMetrics, IntegrityIssue, ModelMetrics, SampleRecord
-from .yolo import label_to_pixel_corners, load_yolo_label
+from .yolo import label_to_pixel_corners, load_yolo_labels
 
 
 class CheckerWindow(QMainWindow):
@@ -143,22 +143,31 @@ class CheckerWindow(QMainWindow):
 
         if self.show_green_overlay.isChecked() and rec.label_path is not None:
             try:
-                label = load_yolo_label(rec.label_path, is_prediction=False)
                 h, w = img.shape[:2]
-                corners = label_to_pixel_corners(label, w, h).reshape((-1, 1, 2)).astype("int32")
-                cv2.polylines(img, [corners], True, (0, 255, 0), 2)
+                labels = load_yolo_labels(rec.label_path, is_prediction=False)
+                for label in labels:
+                    corners = label_to_pixel_corners(label, w, h).reshape((-1, 1, 2)).astype("int32")
+                    cv2.polylines(img, [corners], True, (0, 255, 0), 2)
             except Exception:
                 pass
 
         if self.show_red_overlay.isChecked() and rec.meta_path is not None:
             try:
                 meta = json.loads(rec.meta_path.read_text(encoding="utf-8"))
-                corners = meta.get("projected_corners_px", [])
-                if len(corners) == 4:
-                    import numpy as np
+                import numpy as np
 
-                    poly = np.array(corners, dtype=np.int32).reshape((-1, 1, 2))
-                    cv2.polylines(img, [poly], True, (0, 0, 255), 2)
+                targets = meta.get("targets")
+                if isinstance(targets, list) and targets:
+                    for t in targets:
+                        corners = t.get("projected_corners_px", [])
+                        if len(corners) == 4:
+                            poly = np.array(corners, dtype=np.int32).reshape((-1, 1, 2))
+                            cv2.polylines(img, [poly], True, (0, 0, 255), 2)
+                else:
+                    corners = meta.get("projected_corners_px", [])
+                    if len(corners) == 4:
+                        poly = np.array(corners, dtype=np.int32).reshape((-1, 1, 2))
+                        cv2.polylines(img, [poly], True, (0, 0, 255), 2)
             except Exception:
                 pass
 

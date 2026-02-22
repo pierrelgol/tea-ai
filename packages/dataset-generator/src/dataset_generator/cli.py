@@ -20,6 +20,7 @@ def main() -> None:
     parser.add_argument("--output-root", default=None, help="Augmented output root (default: dataset/augmented/<dataset>)")
     parser.add_argument("--samples-per-background", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--complexity-profile", choices=["legacy", "obb_robust_v1"], default="obb_robust_v1")
 
     parser.add_argument("--scale-min", type=float, default=0.4)
     parser.add_argument("--scale-max", type=float, default=1.2)
@@ -28,6 +29,15 @@ def main() -> None:
     parser.add_argument("--min-quad-area-frac", type=float, default=0.002)
     parser.add_argument("--max-attempts", type=int, default=50)
     parser.add_argument("--class-offset-base", type=int, default=80)
+    parser.add_argument("--targets-per-image-min", type=int, default=2)
+    parser.add_argument("--targets-per-image-max", type=int, default=4)
+    parser.add_argument("--max-occlusion-ratio", type=float, default=0.45)
+    parser.add_argument("--allow-partial-visibility", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--blur-prob", type=float, default=0.35)
+    parser.add_argument("--motion-blur-prob", type=float, default=0.20)
+    parser.add_argument("--noise-prob", type=float, default=0.25)
+    parser.add_argument("--jpeg-artifact-prob", type=float, default=0.20)
+    parser.add_argument("--color-jitter-prob", type=float, default=0.50)
 
     args = parser.parse_args()
 
@@ -50,6 +60,17 @@ def main() -> None:
         Path(args.target_classes_file) if args.target_classes_file else dataset_root / "targets" / "classes.txt"
     )
 
+    if args.complexity_profile == "legacy":
+        args.targets_per_image_min = 1
+        args.targets_per_image_max = 1
+        args.max_occlusion_ratio = 0.0
+        args.allow_partial_visibility = False
+        args.blur_prob = 0.0
+        args.motion_blur_prob = 0.0
+        args.noise_prob = 0.0
+        args.jpeg_artifact_prob = 0.0
+        args.color_jitter_prob = 0.0
+
     config = GeneratorConfig(
         background_splits=background_splits,
         background_dataset_name=dataset_name,
@@ -59,6 +80,12 @@ def main() -> None:
         output_root=output_root,
         samples_per_background=args.samples_per_background,
         seed=args.seed,
+        generator_version="obb_robust_v1",
+        complexity_profile=args.complexity_profile,
+        targets_per_image_min=args.targets_per_image_min,
+        targets_per_image_max=args.targets_per_image_max,
+        max_occlusion_ratio=args.max_occlusion_ratio,
+        allow_partial_visibility=args.allow_partial_visibility,
         scale_min=args.scale_min,
         scale_max=args.scale_max,
         translate_frac=args.translate_frac,
@@ -66,6 +93,11 @@ def main() -> None:
         min_quad_area_frac=args.min_quad_area_frac,
         max_attempts=args.max_attempts,
         class_offset_base=args.class_offset_base,
+        blur_prob=args.blur_prob,
+        motion_blur_prob=args.motion_blur_prob,
+        noise_prob=args.noise_prob,
+        jpeg_artifact_prob=args.jpeg_artifact_prob,
+        color_jitter_prob=args.color_jitter_prob,
     )
 
     results = generate_dataset(config)

@@ -1,0 +1,30 @@
+Model Source
+- requested: latest
+- resolved_model_key: run-20260222-164530_best
+- weights: /home/pollivie/workspace-ai/tea-ai/artifacts/detector-train/runs/run-20260222-164530/weights/best.pt
+- predictions_root: predictions/run-20260222-164530_best/labels
+
+Grading
+- dataset_root: dataset/augmented_v2/coco128
+- samples_indexed: 256
+- samples_scored: 256
+- run_grade_0_100: 74.5664
+- run_precision_proxy: 1.0000
+- run_recall_proxy: 0.8648
+- run_miss_rate_proxy: 0.1352
+- run_class_match_rate: 1.0000
+
+Split Metrics
+- train: grade=75.3395, samples=128
+  objects gt/pred/matched=346/303/303, fn=43, fp=0, class_mismatch=0
+  precision_proxy=1.0000, recall_proxy=0.8757, miss_rate=0.1243, fdr=0.0000
+  mean_iou=0.8667, iou_p90=0.9032, corner_err_px_mean=16.2689, center_err_px_mean=5.7057
+- val: grade=73.7842, samples=128
+  objects gt/pred/matched=342/292/292, fn=50, fp=0, class_mismatch=0
+  precision_proxy=1.0000, recall_proxy=0.8538, miss_rate=0.1462, fdr=0.0000
+  mean_iou=0.8629, iou_p90=0.8950, corner_err_px_mean=17.4761, center_err_px_mean=6.1177
+
+Reports
+- summary_json: dataset/augmented_v2/coco128/grade_reports/grade_report_run-20260222-164530_best.json
+- samples_jsonl: dataset/augmented_v2/coco128/grade_reports/grade_samples_run-20260222-164530_best.jsonl
+- summary_md: dataset/augmented_v2/coco128/grade_reports/grade_summary_run-20260222-164530_best.md

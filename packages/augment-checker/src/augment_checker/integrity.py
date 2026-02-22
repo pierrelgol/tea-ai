@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .types import IntegrityIssue, SampleRecord
-from .yolo import load_yolo_label, validate_yolo_label
+from .yolo import load_yolo_labels, validate_yolo_label
 
 
 def run_integrity_checks(records: list[SampleRecord]) -> tuple[list[IntegrityIssue], dict]:
@@ -15,10 +15,11 @@ def run_integrity_checks(records: list[SampleRecord]) -> tuple[list[IntegrityIss
 
         if rec.label_path is not None:
             try:
-                label = load_yolo_label(rec.label_path)
-                yolo_issues = validate_yolo_label(label)
-                for msg in yolo_issues:
-                    issues.append(IntegrityIssue(rec.split, rec.stem, "invalid_label", msg))
+                labels = load_yolo_labels(rec.label_path)
+                for idx, label in enumerate(labels):
+                    yolo_issues = validate_yolo_label(label)
+                    for msg in yolo_issues:
+                        issues.append(IntegrityIssue(rec.split, rec.stem, "invalid_label", f"line {idx+1}: {msg}"))
             except Exception as exc:
                 issues.append(IntegrityIssue(rec.split, rec.stem, "label_parse_error", str(exc)))
 

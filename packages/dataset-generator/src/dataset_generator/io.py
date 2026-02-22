@@ -104,12 +104,20 @@ def load_backgrounds_by_split(split_dirs: dict[str, Path]) -> dict[str, list[Pat
     return out
 
 
-def write_yolo_obb_label(path: Path, class_id: int, obb_norm: np.ndarray) -> None:
-    """Write YOLO OBB line: class x1 y1 x2 y2 x3 y3 x4 y4 (normalized)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _format_yolo_obb_line(class_id: int, obb_norm: np.ndarray) -> str:
     flat = obb_norm.reshape(-1)
     coords = " ".join(f"{float(v):.10f}" for v in flat)
-    path.write_text(f"{class_id} {coords}\n", encoding="utf-8")
+    return f"{class_id} {coords}"
+
+
+def write_yolo_obb_labels(path: Path, labels: list[tuple[int, np.ndarray]]) -> None:
+    """Write one or more YOLO OBB lines: class x1 y1 x2 y2 x3 y3 x4 y4."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [_format_yolo_obb_line(class_id, obb_norm) for class_id, obb_norm in labels]
+    text = "\n".join(lines)
+    if text:
+        text += "\n"
+    path.write_text(text, encoding="utf-8")
 
 
 def write_metadata(path: Path, payload: dict) -> None:

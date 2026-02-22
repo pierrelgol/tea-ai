@@ -28,31 +28,39 @@ def parse_yolo_line(line: str, *, is_prediction: bool = False) -> YoloLabel:
     return YoloLabel(class_id=class_id, corners_norm=corners, format_name="obb")
 
 
-def load_yolo_label(path, *, is_prediction: bool = False, conf_threshold: float = 0.0) -> YoloLabel:
+def load_yolo_labels(path, *, is_prediction: bool = False, conf_threshold: float = 0.0) -> list[YoloLabel]:
     lines = path.read_text(encoding="utf-8").splitlines()
     if not lines:
         raise ValueError(f"Empty label file: {path}")
+    out: list[YoloLabel] = []
     try:
         if not is_prediction:
-            return parse_yolo_line(lines[0], is_prediction=False)
+            for line_no, line in enumerate(lines, start=1):
+                if not line.strip():
+                    continue
+                out.append(parse_yolo_line(line, is_prediction=False))
+            if not out:
+                raise ValueError("No valid label lines")
+            return out
 
-        best_line: str | None = None
-        best_conf = -1.0
-        for line in lines:
+        for line_no, line in enumerate(lines, start=1):
             parts = line.strip().split()
             if len(parts) != 10:
                 continue
             conf = float(parts[9])
             if conf < conf_threshold:
                 continue
-            if conf > best_conf:
-                best_conf = conf
-                best_line = line
-        if best_line is None:
+            out.append(parse_yolo_line(line, is_prediction=True))
+        if not out:
             raise ValueError("No prediction above confidence threshold")
-        return parse_yolo_line(best_line, is_prediction=True)
+        return out
     except Exception as exc:
-        raise ValueError(f"invalid OBB label at {path}:1: {exc}") from exc
+        raise ValueError(f"invalid OBB label at {path}: {exc}") from exc
+
+
+def load_yolo_label(path, *, is_prediction: bool = False, conf_threshold: float = 0.0) -> YoloLabel:
+    labels = load_yolo_labels(path, is_prediction=is_prediction, conf_threshold=conf_threshold)
+    return labels[0]
 
 
 def _polygon_area_norm(corners: np.ndarray) -> float:

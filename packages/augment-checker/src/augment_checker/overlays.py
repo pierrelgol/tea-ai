@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 
 from .types import SampleRecord
-from .yolo import label_to_pixel_corners, load_yolo_label
+from .yolo import label_to_pixel_corners, load_yolo_labels
 
 
 def _draw_polygon(image: np.ndarray, corners: np.ndarray, color: tuple[int, int, int], text: str) -> None:
@@ -37,15 +37,21 @@ def export_debug_overlays(records: list[SampleRecord], reports_dir: Path, n_per_
             if img is None:
                 continue
 
-            gt = load_yolo_label(rec.label_path)
+            gt_labels = load_yolo_labels(rec.label_path)
             h, w = img.shape[:2]
-            gt_corners = label_to_pixel_corners(gt, w, h)
-            _draw_polygon(img, gt_corners, (0, 255, 0), "GT")
+            for i, gt in enumerate(gt_labels):
+                gt_corners = label_to_pixel_corners(gt, w, h)
+                _draw_polygon(img, gt_corners, (0, 255, 0), f"GT{i+1}")
 
             meta = json.loads(rec.meta_path.read_text(encoding="utf-8"))
-            corners = np.array(meta["projected_corners_px"], dtype=np.float32)
-            poly = corners.reshape((-1, 1, 2)).astype(np.int32)
-            cv2.polylines(img, [poly], isClosed=True, color=(0, 0, 255), thickness=2)
+            targets = meta.get("targets")
+            if isinstance(targets, list) and targets:
+                for i, t in enumerate(targets):
+                    corners = np.array(t["projected_corners_px"], dtype=np.float32)
+                    _draw_polygon(img, corners, (0, 0, 255), f"M{i+1}")
+            else:
+                corners = np.array(meta["projected_corners_px"], dtype=np.float32)
+                _draw_polygon(img, corners, (0, 0, 255), "M1")
 
             out_path = out_dir / f"{rec.stem}.jpg"
             cv2.imwrite(str(out_path), img)

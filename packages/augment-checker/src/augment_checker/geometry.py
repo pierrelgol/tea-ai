@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from .types import GeometryMetrics, SampleRecord
+from .yolo import load_yolo_box, yolo_to_xyxy, iou_xyxy
+
+
+def _apply_h(H: np.ndarray, points: np.ndarray) -> np.ndarray:
+    ones = np.ones((points.shape[0], 1), dtype=np.float64)
+    pts_h = np.concatenate([points.astype(np.float64), ones], axis=1)
+    proj = (H @ pts_h.T).T
+    out = proj[:, :2] / proj[:, 2:3]
+    return out.astype(np.float32)
+
+
+def _corners_to_xyxy(corners: np.ndarray) -> tuple[float, float, float, float]:
+    return (
+        float(np.min(corners[:, 0])),
+        float(np.min(corners[:, 1])),
+        float(np.max(corners[:, 0])),
+        float(np.max(corners[:, 1])),
+    )
+
+
+def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float) -> tuple[list[GeometryMetrics], dict]:
+    metrics: list[GeometryMetrics] = []
+
+    for rec in records:
+        if rec.meta_path is None or rec.image_path is None or rec.label_path is None:
+            metrics.append(
+                GeometryMetrics(
+                    split=rec.split,
+                    stem=rec.stem,
+                    evaluable=False,
+                    mean_corner_err_px=None,
+                    max_corner_err_px=None,
+                    bbox_iou_meta_vs_label=None,
+                    is_outlier=False,
+                    message="missing image/label/meta",
+                )
+            )
+            continue
+
+        try:
+            meta = json.loads(rec.meta_path.read_text(encoding="utf-8"))
+            H = np.array(meta["H"], dtype=np.float64)
+            canonical = np.array(meta["canonical_corners_px"], dtype=np.float32)
+            projected_stored = np.array(meta["projected_corners_px"], dtype=np.float32)
+
+            projected_est = _apply_h(H, canonical)
+            corner_err = np.linalg.norm(projected_est - projected_stored, axis=1)
+            mean_err = float(np.mean(corner_err))
+            max_err = float(np.max(corner_err))
+
+            img = cv2.imread(str(rec.image_path), cv2.IMREAD_COLOR)
+            if img is None:
+                raise ValueError("failed to read image")
+            h, w = img.shape[:2]
+
+            box = load_yolo_box(rec.label_path)
+            label_xyxy = yolo_to_xyxy(box, w, h)
+            meta_xyxy = _corners_to_xyxy(projected_stored)
+            bbox_iou = iou_xyxy(meta_xyxy, label_xyxy)
+
+            metrics.append(
+                GeometryMetrics(
+                    split=rec.split,
+                    stem=rec.stem,
+                    evaluable=True,
+                    mean_corner_err_px=mean_err,
+                    max_corner_err_px=max_err,
+                    bbox_iou_meta_vs_label=bbox_iou,
+                    is_outlier=mean_err > outlier_threshold_px,
+                )
+            )
+        except Exception as exc:
+            metrics.append(
+                GeometryMetrics(
+                    split=rec.split,
+                    stem=rec.stem,
+                    evaluable=False,
+                    mean_corner_err_px=None,
+                    max_corner_err_px=None,
+                    bbox_iou_meta_vs_label=None,
+                    is_outlier=False,
+                    message=str(exc),
+                )
+            )
+
+    eval_metrics = [m for m in metrics if m.evaluable and m.mean_corner_err_px is not None]
+    errs = [m.mean_corner_err_px for m in eval_metrics if m.mean_corner_err_px is not None]
+    ious = [m.bbox_iou_meta_vs_label for m in eval_metrics if m.bbox_iou_meta_vs_label is not None]
+
+    summary = {
+        "num_samples": len(metrics),
+        "num_evaluable": len(eval_metrics),
+        "num_outliers": sum(1 for m in eval_metrics if m.is_outlier),
+        "outlier_rate": (sum(1 for m in eval_metrics if m.is_outlier) / len(eval_metrics)) if eval_metrics else 0.0,
+        "mean_corner_error_px": float(np.mean(errs)) if errs else None,
+        "p95_corner_error_px": float(np.percentile(np.array(errs), 95)) if errs else None,
+        "max_corner_error_px": float(np.max(errs)) if errs else None,
+        "mean_bbox_iou_meta_vs_label": float(np.mean(ious)) if ious else None,
+    }
+
+    return metrics, summary

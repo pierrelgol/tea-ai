@@ -49,3 +49,7 @@ label-targets: venv
 generate-augmented: venv
     @uv sync --all-packages
     @uv run dataset-generator --output-root dataset/augmented
+
+check-augmented: venv
+    @uv sync --all-packages
+    @uv run augment-checker --dataset-root dataset/augmented --reports-dir dataset/augmented/reports

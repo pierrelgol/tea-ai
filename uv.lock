@@ -4,10 +4,28 @@ requires-python = ">=3.12"
 
 [manifest]
 members = [
+    "augment-checker",
     "dataset-fetcher",
     "dataset-generator",
     "target-labeller",
     "tea-ai",
+]
+
+[[package]]
+name = "augment-checker"
+version = "0.1.0"
+source = { editable = "packages/augment-checker" }
+dependencies = [
+    { name = "numpy" },
+    { name = "opencv-python-headless" },
+    { name = "pyside6" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.1.0" },
+    { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
+    { name = "pyside6", specifier = ">=6.7.0" },
 ]
 
 [[package]]
@@ -185,6 +203,7 @@ name = "tea-ai"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "augment-checker" },
     { name = "dataset-fetcher" },
     { name = "dataset-generator" },
     { name = "target-labeller" },
@@ -192,6 +211,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "augment-checker", editable = "packages/augment-checker" },
     { name = "dataset-fetcher", editable = "packages/dataset-fetcher" },
     { name = "dataset-generator", editable = "packages/dataset-generator" },
     { name = "target-labeller", editable = "packages/target-labeller" },

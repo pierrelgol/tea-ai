@@ -5,6 +5,7 @@ description = "Composable AI pipeline workspace"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "augment-checker",
   "dataset-generator",
   "dataset-fetcher",
   "target-labeller",
@@ -14,6 +15,7 @@ dependencies = [
 members = ["packages/*"]
 
 [tool.uv.sources]
+augment-checker = { workspace = true }
 dataset-generator = { workspace = true }
 dataset-fetcher = { workspace = true }
 target-labeller = { workspace = true }

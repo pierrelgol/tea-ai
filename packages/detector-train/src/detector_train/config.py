@@ -53,7 +53,10 @@ class TrainConfig:
     dino_root: Path = Path("dinov3")
     dino_distill_weight: float = 0.2
     dino_distill_warmup_epochs: int = 5
-    dino_student_embed_layer: int = -2
+    dino_distill_layers: tuple[int, ...] = (19,)
+    dino_distill_channels: int = 32
+    dino_distill_object_weight: float = 1.0
+    dino_distill_background_weight: float = 0.2
 
     wandb_enabled: bool = True
     wandb_project: str = "tea-ai-detector"
@@ -110,6 +113,14 @@ class TrainConfig:
             raise ValueError("dino_distill_weight must be >= 0")
         if self.dino_distill_warmup_epochs < 0:
             raise ValueError("dino_distill_warmup_epochs must be >= 0")
+        if not self.dino_distill_layers:
+            raise ValueError("dino_distill_layers must contain at least one layer index")
+        if self.dino_distill_channels < 8:
+            raise ValueError("dino_distill_channels must be >= 8")
+        if self.dino_distill_object_weight < 0:
+            raise ValueError("dino_distill_object_weight must be >= 0")
+        if self.dino_distill_background_weight < 0:
+            raise ValueError("dino_distill_background_weight must be >= 0")
         if self.wandb_mode not in {"online", "offline", "auto"}:
             raise ValueError("wandb_mode must be one of: online, offline, auto")
         if self.eval_interval_epochs < 1:

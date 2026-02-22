@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,7 @@ import shutil
 
 from .config import TrainConfig
 from .data_yaml import write_data_yaml
-from .dino_trainer import DinoOBBTrainer
+from .dino_trainer import DinoDistillConfig, DinoOBBTrainer
 from .wandb_logger import finish_wandb, init_wandb, log_wandb
 
 
@@ -197,6 +198,12 @@ def _extract_epoch_metrics(trainer) -> dict[str, float]:
     dino_weight = _to_float(getattr(trainer, "_dino_last_weight", None))
     if dino_weight is not None:
         out["train/distill_weight"] = dino_weight
+    dino_obj = _to_float(getattr(trainer, "_dino_epoch_obj_loss", None))
+    if dino_obj is not None:
+        out["train/loss_distill_obj"] = dino_obj
+    dino_bg = _to_float(getattr(trainer, "_dino_epoch_bg_loss", None))
+    if dino_bg is not None:
+        out["train/loss_distill_bg"] = dino_bg
 
     return out
 
@@ -360,7 +367,10 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "dino_root": str(config.dino_root),
         "dino_distill_weight": config.dino_distill_weight,
         "dino_distill_warmup_epochs": config.dino_distill_warmup_epochs,
-        "dino_student_embed_layer": config.dino_student_embed_layer,
+        "dino_distill_layers": list(config.dino_distill_layers),
+        "dino_distill_channels": config.dino_distill_channels,
+        "dino_distill_object_weight": config.dino_distill_object_weight,
+        "dino_distill_background_weight": config.dino_distill_background_weight,
         "classes_count": len(names),
         "wandb_log_every_epoch": config.wandb_log_every_epoch,
         "wandb_log_system_metrics": config.wandb_log_system_metrics,
@@ -399,11 +409,17 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                 f"model is not an OBB model (task={model_task!r}): {config.model}. "
                 "Use an OBB checkpoint."
             )
-        DinoOBBTrainer.configure(
-            dino_root=config.dino_root,
-            distill_weight=config.dino_distill_weight,
-            warmup_epochs=config.dino_distill_warmup_epochs,
-            student_embed_layer=config.dino_student_embed_layer,
+        trainer_factory = partial(
+            DinoOBBTrainer,
+            dino_cfg=DinoDistillConfig(
+                dino_root=config.dino_root,
+                weight=config.dino_distill_weight,
+                warmup_epochs=config.dino_distill_warmup_epochs,
+                student_layers=tuple(int(v) for v in config.dino_distill_layers),
+                channels=int(config.dino_distill_channels),
+                object_weight=config.dino_distill_object_weight,
+                background_weight=config.dino_distill_background_weight,
+            ),
         )
         safe_warmup_epochs = float(config.warmup_epochs) if config.warmup_epochs is not None else 0.0
         safe_fliplr = float(config.fliplr) if config.fliplr is not None else 0.0
@@ -520,7 +536,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             train_kwargs["freeze"] = config.freeze
 
         train_result = model.train(
-            trainer=DinoOBBTrainer,
+            trainer=trainer_factory,
             **train_kwargs,
         )
 

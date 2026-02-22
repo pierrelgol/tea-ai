@@ -13,6 +13,7 @@ import shutil
 
 from .config import TrainConfig
 from .data_yaml import write_data_yaml
+from .dino_viz import save_dino_visualizations
 from .dino_trainer import DinoDistillConfig, DinoOBBTrainer
 from .wandb_logger import finish_wandb, init_wandb, log_wandb
 
@@ -374,6 +375,9 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "stage_a_freeze": config.stage_a_freeze,
         "stage_a_distill_weight": config.stage_a_distill_weight,
         "stage_b_distill_weight": config.stage_b_distill_weight,
+        "dino_viz_enabled": config.dino_viz_enabled,
+        "dino_viz_every_n_epochs": config.dino_viz_every_n_epochs,
+        "dino_viz_max_samples": config.dino_viz_max_samples,
         "classes_count": len(names),
         "wandb_log_every_epoch": config.wandb_log_every_epoch,
         "wandb_log_system_metrics": config.wandb_log_system_metrics,
@@ -419,6 +423,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         best_geo_weights: Path | None = None
         last_eval_epoch = -1
         logged_keys_by_step: dict[int, set[str]] = {}
+        dino_viz_records: list[dict[str, Any]] = []
 
         def _log_step_payload(step: int, payload: dict[str, float]) -> None:
             if step <= 0 or not payload:
@@ -439,6 +444,39 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
 
             if config.wandb_log_every_epoch:
                 _log_step_payload(current_epoch, _extract_epoch_metrics(trainer))
+
+            if config.dino_viz_enabled:
+                should_save_viz = (
+                    current_epoch == config.epochs
+                    or current_epoch % config.dino_viz_every_n_epochs == 0
+                )
+                if should_save_viz:
+                    snapshot = getattr(trainer, "_dino_viz_snapshot", None)
+                    if snapshot is not None:
+                        save_dir_cb = Path(getattr(trainer, "save_dir", project_dir / config.name))
+                        viz_dir = save_dir_cb / "dino_viz" / f"epoch_{current_epoch:03d}"
+                        try:
+                            viz_result = save_dino_visualizations(
+                                snapshot=snapshot,
+                                output_dir=viz_dir,
+                                max_samples=config.dino_viz_max_samples,
+                            )
+                            dino_viz_records.append(
+                                {
+                                    "epoch": current_epoch,
+                                    "output_dir": str(viz_dir),
+                                    "files_written": len(viz_result.get("files", [])),
+                                    "files": viz_result.get("files", []),
+                                }
+                            )
+                        except Exception as exc:
+                            dino_viz_records.append(
+                                {
+                                    "epoch": current_epoch,
+                                    "output_dir": str(viz_dir),
+                                    "error": str(exc),
+                                }
+                            )
 
             if not config.eval_enabled:
                 return
@@ -535,6 +573,8 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                     channels=int(config.dino_distill_channels),
                     object_weight=config.dino_distill_object_weight,
                     background_weight=config.dino_distill_background_weight,
+                    viz_enabled=config.dino_viz_enabled,
+                    viz_max_samples=config.dino_viz_max_samples,
                 ),
             )
         model = YOLO(config.model)
@@ -583,6 +623,12 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             "metrics": metrics,
             "resolved_device": device,
             "periodic_eval": periodic_eval,
+            "dino_visualization": {
+                "enabled": config.dino_viz_enabled,
+                "every_n_epochs": config.dino_viz_every_n_epochs,
+                "max_samples": config.dino_viz_max_samples,
+                "records": dino_viz_records,
+            },
         }
     except Exception:
         raise

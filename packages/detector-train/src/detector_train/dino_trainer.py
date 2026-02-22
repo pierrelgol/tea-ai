@@ -28,6 +28,8 @@ class DinoDistillConfig:
     channels: int
     object_weight: float
     background_weight: float
+    viz_enabled: bool
+    viz_max_samples: int
 
 
 class DinoOBBTrainer(OBBTrainer):
@@ -55,6 +57,8 @@ class DinoOBBTrainer(OBBTrainer):
         self._dino_stage_a_weight = max(0.0, float(self._dino_cfg.stage_a_weight))
         self._dino_stage_b_weight = max(0.0, float(self._dino_cfg.stage_b_weight))
         self._dino_warmup_epochs = max(0, int(self._dino_cfg.warmup_epochs))
+        self._dino_viz_enabled = bool(self._dino_cfg.viz_enabled)
+        self._dino_viz_max_samples = max(1, int(self._dino_cfg.viz_max_samples))
         self._dino_active_weight = 0.0
         self._dino_last_weight = 0.0
         self._dino_loss_sum = 0.0
@@ -62,6 +66,7 @@ class DinoOBBTrainer(OBBTrainer):
         self._dino_epoch_loss = 0.0
         self._dino_epoch_obj_loss = 0.0
         self._dino_epoch_bg_loss = 0.0
+        self._dino_viz_snapshot: dict[str, object] | None = None
         self._dino_stage_a_active = self._dino_stage_a_epochs > 0 and self._dino_stage_a_freeze > 0
         self._dino_stage_a_prefixes = tuple(f"model.{i}." for i in range(self._dino_stage_a_freeze))
 
@@ -138,6 +143,14 @@ class DinoOBBTrainer(OBBTrainer):
             layer_losses: list[torch.Tensor] = []
             layer_obj_losses: list[torch.Tensor] = []
             layer_bg_losses: list[torch.Tensor] = []
+            signal_maps: list[torch.Tensor] = []
+            viz_obj_mask: torch.Tensor | None = None
+            sample_count = 0
+            if trainer._dino_viz_enabled:
+                sample_count = min(int(batch["img"].shape[0]), trainer._dino_viz_max_samples)
+                if sample_count > 0:
+                    teacher_hw = (int(teacher_map.shape[-2]), int(teacher_map.shape[-1]))
+                    viz_obj_mask = _build_object_mask(batch, teacher_hw, teacher_map.device)
 
             for layer_idx in trainer._dino_layers:
                 if layer_idx not in trainer._dino_feature_cache:
@@ -171,10 +184,24 @@ class DinoOBBTrainer(OBBTrainer):
                 obj_loss = (cos_dist * obj_mask.flatten(2)).sum() / obj_den
                 bg_loss = (cos_dist * bg_mask.flatten(2)).sum() / bg_den
                 weighted = obj_weight * obj_loss + bg_weight * bg_loss
+                signal_map = (
+                    cos_dist.view(cos_dist.shape[0], *smap.shape[-2:])
+                    * (obj_weight * obj_mask[:, 0] + bg_weight * bg_mask[:, 0])
+                )
+                signal_maps.append(signal_map)
 
                 layer_losses.append(weighted)
                 layer_obj_losses.append(obj_loss)
                 layer_bg_losses.append(bg_loss)
+
+            if trainer._dino_viz_enabled and sample_count > 0 and viz_obj_mask is not None:
+                mean_signal = torch.stack(signal_maps, dim=0).mean(dim=0)
+                trainer._dino_viz_snapshot = {
+                    "images": batch["img"][:sample_count].detach().float().cpu().numpy(),
+                    "teacher": teacher_map[:sample_count].detach().float().cpu().numpy(),
+                    "obj_mask": viz_obj_mask[:sample_count, 0].detach().float().cpu().numpy(),
+                    "signal_map": mean_signal[:sample_count].detach().float().cpu().numpy(),
+                }
 
             mean_loss = torch.stack(layer_losses).mean() * trainer._dino_active_weight
             mean_obj = torch.stack(layer_obj_losses).mean() * trainer._dino_active_weight
@@ -209,6 +236,7 @@ class DinoOBBTrainer(OBBTrainer):
             cb_trainer._dino_epoch_loss = 0.0
             cb_trainer._dino_epoch_obj_loss = 0.0
             cb_trainer._dino_epoch_bg_loss = 0.0
+            cb_trainer._dino_viz_snapshot = None
 
             epoch_idx = int(getattr(cb_trainer, "epoch", 0))
             in_stage_a = epoch_idx < cb_trainer._dino_stage_a_epochs

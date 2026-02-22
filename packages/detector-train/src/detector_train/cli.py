@@ -33,6 +33,9 @@ def main() -> None:
     parser.add_argument("--dataset", default="coco1024", help="Dataset name under dataset/augmented/")
     parser.add_argument("--model", default=HF_DEFAULT_ALIAS)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--dino-viz", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--dino-viz-every", type=int, default=5)
+    parser.add_argument("--dino-viz-max-samples", type=int, default=4)
     args = parser.parse_args()
 
     dataset_root = Path("dataset/augmented") / args.dataset
@@ -45,6 +48,9 @@ def main() -> None:
         model=model_path,
         name="current",
         seed=args.seed,
+        dino_viz_enabled=args.dino_viz,
+        dino_viz_every_n_epochs=args.dino_viz_every,
+        dino_viz_max_samples=args.dino_viz_max_samples,
         wandb_run_name=wandb_run_name,
     )
 

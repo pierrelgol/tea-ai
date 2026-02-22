@@ -1,0 +1,18 @@
+# detector-infer
+
+Focused inference module.
+
+Responsibilities:
+- Load weights
+- Run inference
+- Save predictions in YOLO format
+
+## Run
+
+```bash
+uv run detector-infer \
+  --weights artifacts/detector-train/runs/my-run/weights/best.pt \
+  --dataset-root dataset/augmented \
+  --output-root predictions \
+  --model-name yolo11n-obb
+```

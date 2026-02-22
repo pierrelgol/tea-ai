@@ -16,4 +16,4 @@ uv run dataset-generator --seed 42
 - `dataset/augmented/classes.txt`
 - `dataset/augmented/classes_map.json`
 
-Labels are YOLO bbox derived from projected canonical corners using the same homography used for image warping.
+Labels are YOLO OBB (`class x1 y1 x2 y2 x3 y3 x4 y4`, normalized) derived directly from projected canonical corners using the same homography used for image warping.

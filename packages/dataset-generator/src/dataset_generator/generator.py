@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 
 from .config import GeneratorConfig
-from .geometry import apply_homography_to_points, corners_to_xyxy, xyxy_to_yolo
+from .geometry import apply_homography_to_points, corners_px_to_yolo_obb, corners_to_xyxy, xyxy_to_yolo
 from .homography import HomographyParams, sample_valid_homography
 from .io import (
     CanonicalTarget,
@@ -16,7 +16,7 @@ from .io import (
     load_target_classes,
     write_augmented_classes,
     write_metadata,
-    write_yolo_label,
+    write_yolo_obb_label,
 )
 from .synthesis import warp_and_composite
 
@@ -90,6 +90,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                 )
 
                 projected_corners = apply_homography_to_points(hs.H, target.canonical_corners_px)
+                projected_corners_norm = corners_px_to_yolo_obb(projected_corners, bg_w, bg_h)
                 x1, y1, x2, y2 = corners_to_xyxy(projected_corners)
                 x_center, y_center, width, height = xyxy_to_yolo(x1, y1, x2, y2, bg_w, bg_h)
 
@@ -109,7 +110,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                 cv2.imwrite(str(image_out_path), composited)
 
                 class_id_exported = config.class_offset_base + target.class_id_local
-                write_yolo_label(label_out_path, class_id_exported, x_center, y_center, width, height)
+                write_yolo_obb_label(label_out_path, class_id_exported, projected_corners_norm)
 
                 metadata = {
                     "seed": config.seed,
@@ -121,6 +122,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                     "H": hs.H.tolist(),
                     "canonical_corners_px": target.canonical_corners_px.tolist(),
                     "projected_corners_px": projected_corners.tolist(),
+                    "projected_corners_yolo_obb": projected_corners_norm.tolist(),
                     "bbox_xyxy_px": [x1, y1, x2, y2],
                     "bbox_yolo": [x_center, y_center, width, height],
                 }

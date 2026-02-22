@@ -104,3 +104,12 @@ def xyxy_to_yolo(x1: float, y1: float, x2: float, y2: float, image_w: int, image
         max(0.0, min(1.0, width)),
         max(0.0, min(1.0, height)),
     )
+
+
+def corners_px_to_yolo_obb(quad: np.ndarray, image_w: int, image_h: int) -> np.ndarray:
+    out = quad.astype(np.float64).copy()
+    out[:, 0] = out[:, 0] / image_w
+    out[:, 1] = out[:, 1] / image_h
+    out[:, 0] = np.clip(out[:, 0], 0.0, 1.0)
+    out[:, 1] = np.clip(out[:, 1], 0.0, 1.0)
+    return out.astype(np.float32)

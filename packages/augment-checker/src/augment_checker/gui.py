@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from .types import GeometryMetrics, IntegrityIssue, ModelMetrics, SampleRecord
-from .yolo import load_yolo_box, yolo_to_xyxy
+from .yolo import label_to_pixel_corners, load_yolo_label
 
 
 class CheckerWindow(QMainWindow):
@@ -129,10 +129,10 @@ class CheckerWindow(QMainWindow):
 
         if rec.label_path is not None:
             try:
-                box = load_yolo_box(rec.label_path)
+                label = load_yolo_label(rec.label_path)
                 h, w = img.shape[:2]
-                x1, y1, x2, y2 = yolo_to_xyxy(box, w, h)
-                cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                corners = label_to_pixel_corners(label, w, h).reshape((-1, 1, 2)).astype("int32")
+                cv2.polylines(img, [corners], True, (0, 255, 0), 2)
             except Exception:
                 pass
 

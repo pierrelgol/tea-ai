@@ -2,61 +2,97 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 
 @dataclass(slots=True)
-class YoloBox:
+class YoloLabel:
     class_id: int
-    x_center: float
-    y_center: float
-    width: float
-    height: float
+    corners_norm: np.ndarray  # (4, 2) normalized points
+    format_name: str  # "bbox" or "obb"
 
 
-def parse_yolo_line(line: str) -> YoloBox:
-    parts = line.strip().split()
-    if len(parts) != 5:
-        raise ValueError("YOLO line must have 5 fields")
-    return YoloBox(
-        class_id=int(parts[0]),
-        x_center=float(parts[1]),
-        y_center=float(parts[2]),
-        width=float(parts[3]),
-        height=float(parts[4]),
+def _bbox_to_corners_norm(xc: float, yc: float, w: float, h: float) -> np.ndarray:
+    x1 = xc - w / 2.0
+    y1 = yc - h / 2.0
+    x2 = xc + w / 2.0
+    y2 = yc + h / 2.0
+    return np.array(
+        [
+            [x1, y1],
+            [x2, y1],
+            [x2, y2],
+            [x1, y2],
+        ],
+        dtype=np.float32,
     )
 
 
-def load_yolo_box(path) -> YoloBox:
+def parse_yolo_line(line: str) -> YoloLabel:
+    parts = line.strip().split()
+    if len(parts) not in (5, 9):
+        raise ValueError("YOLO label line must have 5 (bbox) or 9 (obb) fields")
+
+    class_id = int(parts[0])
+    vals = [float(x) for x in parts[1:]]
+
+    if len(parts) == 5:
+        corners = _bbox_to_corners_norm(vals[0], vals[1], vals[2], vals[3])
+        return YoloLabel(class_id=class_id, corners_norm=corners, format_name="bbox")
+
+    corners = np.array(vals, dtype=np.float32).reshape(4, 2)
+    return YoloLabel(class_id=class_id, corners_norm=corners, format_name="obb")
+
+
+def load_yolo_label(path) -> YoloLabel:
     lines = path.read_text(encoding="utf-8").splitlines()
     if not lines:
         raise ValueError(f"Empty label file: {path}")
     return parse_yolo_line(lines[0])
 
 
-def validate_yolo_box(box: YoloBox, eps: float = 1e-6) -> list[str]:
-    issues: list[str] = []
-    for name, value in (
-        ("x_center", box.x_center),
-        ("y_center", box.y_center),
-        ("width", box.width),
-        ("height", box.height),
-    ):
-        if value < 0.0 or value > 1.0:
-            issues.append(f"{name} outside [0,1]: {value}")
+def _polygon_area_norm(corners: np.ndarray) -> float:
+    x = corners[:, 0]
+    y = corners[:, 1]
+    return float(abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))) * 0.5)
 
-    if box.width <= eps:
-        issues.append(f"width degenerate: {box.width}")
-    if box.height <= eps:
-        issues.append(f"height degenerate: {box.height}")
+
+def validate_yolo_label(label: YoloLabel, eps: float = 1e-6) -> list[str]:
+    issues: list[str] = []
+    for idx, (x, y) in enumerate(label.corners_norm):
+        if x < 0.0 or x > 1.0:
+            issues.append(f"x{idx + 1} outside [0,1]: {x}")
+        if y < 0.0 or y > 1.0:
+            issues.append(f"y{idx + 1} outside [0,1]: {y}")
+
+    width = float(np.max(label.corners_norm[:, 0]) - np.min(label.corners_norm[:, 0]))
+    height = float(np.max(label.corners_norm[:, 1]) - np.min(label.corners_norm[:, 1]))
+    if width <= eps:
+        issues.append(f"width degenerate: {width}")
+    if height <= eps:
+        issues.append(f"height degenerate: {height}")
+
+    area = _polygon_area_norm(label.corners_norm)
+    if area <= eps:
+        issues.append(f"polygon area degenerate: {area}")
 
     return issues
 
 
-def yolo_to_xyxy(box: YoloBox, image_w: int, image_h: int) -> tuple[float, float, float, float]:
-    cx = box.x_center * image_w
-    cy = box.y_center * image_h
-    bw = box.width * image_w
-    bh = box.height * image_h
-    return (cx - bw / 2.0, cy - bh / 2.0, cx + bw / 2.0, cy + bh / 2.0)
+def label_to_pixel_corners(label: YoloLabel, image_w: int, image_h: int) -> np.ndarray:
+    out = label.corners_norm.astype(np.float64).copy()
+    out[:, 0] *= image_w
+    out[:, 1] *= image_h
+    return out.astype(np.float32)
+
+
+def label_to_xyxy(label: YoloLabel, image_w: int, image_h: int) -> tuple[float, float, float, float]:
+    corners = label_to_pixel_corners(label, image_w, image_h)
+    x1 = float(np.min(corners[:, 0]))
+    y1 = float(np.min(corners[:, 1]))
+    x2 = float(np.max(corners[:, 0]))
+    y2 = float(np.max(corners[:, 1]))
+    return x1, y1, x2, y2
 
 
 def iou_xyxy(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:

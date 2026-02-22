@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 
 from .types import GeometryMetrics, SampleRecord
-from .yolo import load_yolo_box, yolo_to_xyxy, iou_xyxy
+from .yolo import iou_xyxy, label_to_xyxy, load_yolo_label
 
 
 def _apply_h(H: np.ndarray, points: np.ndarray) -> np.ndarray:
@@ -62,8 +62,8 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
                 raise ValueError("failed to read image")
             h, w = img.shape[:2]
 
-            box = load_yolo_box(rec.label_path)
-            label_xyxy = yolo_to_xyxy(box, w, h)
+            label = load_yolo_label(rec.label_path)
+            label_xyxy = label_to_xyxy(label, w, h)
             meta_xyxy = _corners_to_xyxy(projected_stored)
             bbox_iou = iou_xyxy(meta_xyxy, label_xyxy)
 

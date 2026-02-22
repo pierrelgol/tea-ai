@@ -116,6 +116,14 @@ def write_yolo_label(path: Path, class_id: int, x_center: float, y_center: float
     )
 
 
+def write_yolo_obb_label(path: Path, class_id: int, obb_norm: np.ndarray) -> None:
+    """Write YOLO OBB line: class x1 y1 x2 y2 x3 y3 x4 y4 (normalized)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flat = obb_norm.reshape(-1)
+    coords = " ".join(f"{float(v):.10f}" for v in flat)
+    path.write_text(f"{class_id} {coords}\n", encoding="utf-8")
+
+
 def write_metadata(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

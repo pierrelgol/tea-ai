@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 
 from .types import ModelMetrics, ModelSampleMetric, SampleRecord
-from .yolo import center_drift_px, iou_xyxy, load_yolo_box, yolo_to_xyxy
+from .yolo import center_drift_px, iou_xyxy, label_to_xyxy, load_yolo_label
 
 
 def _prediction_models(predictions_root: Path) -> list[Path]:
@@ -48,10 +48,10 @@ def run_prediction_checks(records: list[SampleRecord], predictions_root: Path | 
                 continue
             h, w = img.shape[:2]
 
-            gt = load_yolo_box(rec.label_path)
-            pred = load_yolo_box(pred_label)
-            gt_xyxy = yolo_to_xyxy(gt, w, h)
-            pred_xyxy = yolo_to_xyxy(pred, w, h)
+            gt = load_yolo_label(rec.label_path)
+            pred = load_yolo_label(pred_label)
+            gt_xyxy = label_to_xyxy(gt, w, h)
+            pred_xyxy = label_to_xyxy(pred, w, h)
 
             iou = iou_xyxy(gt_xyxy, pred_xyxy)
             drift = center_drift_px(gt_xyxy, pred_xyxy)

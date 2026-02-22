@@ -7,15 +7,14 @@ import cv2
 import numpy as np
 
 from .types import SampleRecord
-from .yolo import load_yolo_box, yolo_to_xyxy
+from .yolo import label_to_pixel_corners, load_yolo_label
 
 
-def _draw_xyxy(image: np.ndarray, xyxy: tuple[float, float, float, float], color: tuple[int, int, int], text: str) -> None:
-    x1, y1, x2, y2 = xyxy
-    p1 = (int(round(x1)), int(round(y1)))
-    p2 = (int(round(x2)), int(round(y2)))
-    cv2.rectangle(image, p1, p2, color, 2)
-    cv2.putText(image, text, (p1[0], max(12, p1[1] - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+def _draw_polygon(image: np.ndarray, corners: np.ndarray, color: tuple[int, int, int], text: str) -> None:
+    poly = corners.reshape((-1, 1, 2)).astype(np.int32)
+    cv2.polylines(image, [poly], isClosed=True, color=color, thickness=2)
+    x0, y0 = int(poly[0][0][0]), int(poly[0][0][1])
+    cv2.putText(image, text, (x0, max(12, y0 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
 
 
 def export_debug_overlays(records: list[SampleRecord], reports_dir: Path, n_per_split: int, seed: int) -> list[Path]:
@@ -38,10 +37,10 @@ def export_debug_overlays(records: list[SampleRecord], reports_dir: Path, n_per_
             if img is None:
                 continue
 
-            gt = load_yolo_box(rec.label_path)
+            gt = load_yolo_label(rec.label_path)
             h, w = img.shape[:2]
-            gt_xyxy = yolo_to_xyxy(gt, w, h)
-            _draw_xyxy(img, gt_xyxy, (0, 255, 0), "GT")
+            gt_corners = label_to_pixel_corners(gt, w, h)
+            _draw_polygon(img, gt_corners, (0, 255, 0), "GT")
 
             meta = json.loads(rec.meta_path.read_text(encoding="utf-8"))
             corners = np.array(meta["projected_corners_px"], dtype=np.float32)

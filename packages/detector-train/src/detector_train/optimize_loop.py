@@ -79,7 +79,7 @@ def _update_best_config(
         "technique": technique,
         "baseline_grade_0_100": baseline_grade,
         "run_grade_0_100": float(aggregate["run_grade_0_100"]),
-        "config": asdict(train_config),
+        "config": json.loads(json.dumps(asdict(train_config), default=str)),
         "run_detection": aggregate.get("run_detection", {}),
     }
     best_config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -272,7 +272,14 @@ def main() -> None:
     start_iteration = 1
     if history:
         start_iteration = int(history[-1]["iteration"]) + 1
-        best_grade = max(best_grade, max(float(row.get("best_grade_0_100", baseline_grade)) for row in history))
+        eligible_rows = [
+            row
+            for row in history
+            if float(row.get("precision_proxy", 0.0) or 0.0) >= args.min_precision_proxy
+            and float(row.get("recall_proxy", 0.0) or 0.0) >= args.min_recall_proxy
+        ]
+        if eligible_rows:
+            best_grade = max(best_grade, max(float(row.get("run_grade_0_100", baseline_grade)) for row in eligible_rows))
         consecutive_no_win = int(history[-1].get("consecutive_no_win", 0))
         print(
             f"resuming from iteration {start_iteration} "

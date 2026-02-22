@@ -4,7 +4,11 @@ default:
     @just --list
 
 venv:
-    uv venv .venv
+    if [[ -d .venv ]]; then \
+      echo ".venv already exists; skipping creation"; \
+    else \
+      uv venv .venv; \
+    fi
 
 build: venv
     uv sync --all-packages

@@ -41,3 +41,7 @@ fetch-dataset: venv
     @if [[ ! -d dataset/coco8 ]] || [[ -z "$(ls -A dataset/coco8 2>/dev/null)" ]]; then \
       uv run dataset-fetcher --dataset-root dataset; \
     fi
+
+label-targets: venv
+    @uv sync --all-packages
+    @uv run target-labeller --images-dir targets --labels-dir dataset/targets/labels --classes-file dataset/targets/classes.txt

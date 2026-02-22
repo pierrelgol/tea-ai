@@ -4,30 +4,40 @@ default:
     @just --list
 
 venv:
-    if [[ -d .venv ]]; then \
-      echo ".venv already exists; skipping creation"; \
-    else \
-      uv venv .venv; \
-    fi
+    @if [[ ! -d .venv ]]; then uv venv .venv; fi
 
 build: venv
-    uv sync --all-packages
-    for pkg in packages/*; do \
+    @uv sync --all-packages
+    @shopt -s nullglob
+    @for pkg in packages/*; do \
       if [[ -f "$pkg/pyproject.toml" ]]; then \
-        uv build "$pkg"; \
+        if compgen -G "$pkg/dist/*.whl" > /dev/null && compgen -G "$pkg/dist/*.tar.gz" > /dev/null; then \
+          :; \
+        else \
+          mkdir -p "$pkg/dist"; \
+          uv build "$pkg" --out-dir "$pkg/dist"; \
+        fi; \
       fi; \
     done
 
 clean:
-    find . -type d \( -name "__pycache__" -o -name ".pytest_cache" -o -name ".ruff_cache" -o -name ".mypy_cache" \) -prune -exec rm -rf {} +
-    rm -rf dist build .coverage htmlcov
-    for pkg in packages/*; do \
+    @find . -type d \( -name "__pycache__" -o -name ".pytest_cache" -o -name ".ruff_cache" -o -name ".mypy_cache" \) -prune -exec rm -rf {} +
+    @if [[ -d dist || -d build || -f .coverage || -d htmlcov ]]; then \
+      rm -rf dist build .coverage htmlcov; \
+    else \
+      :; \
+    fi
+    @shopt -s nullglob
+    @for pkg in packages/*; do \
       rm -rf "$pkg/dist" "$pkg/build"; \
       find "$pkg" -type d -name "*.egg-info" -prune -exec rm -rf {} +; \
     done
 
 fclean: clean
-    rm -rf .venv
+    @if [[ -d .venv ]]; then rm -rf .venv; fi
 
-fetch-dataset: build
-    uv run dataset-fetcher
+fetch-dataset: venv
+    @uv sync --all-packages
+    @if [[ ! -d dataset/coco8 ]] || [[ -z "$(ls -A dataset/coco8 2>/dev/null)" ]]; then \
+      uv run dataset-fetcher --dataset-root dataset; \
+    fi

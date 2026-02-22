@@ -1,5 +1,4 @@
 from pathlib import Path
-import shutil
 import tempfile
 import urllib.request
 import zipfile
@@ -10,7 +9,7 @@ COCO8_URLS = [
 ]
 
 
-def fetch_coco8(dataset_root: Path = Path("datasets")) -> Path:
+def fetch_coco8(dataset_root: Path = Path("dataset")) -> Path:
     """Download and extract COCO8 into dataset_root/coco8.
 
     Returns the extracted dataset path.
@@ -39,6 +38,8 @@ def fetch_coco8(dataset_root: Path = Path("datasets")) -> Path:
 
         extracted = dataset_root / "coco8"
         if not extracted.exists():
-            raise RuntimeError("COCO8 archive extracted, but datasets/coco8 was not found")
+            raise RuntimeError(
+                f"COCO8 archive extracted, but expected '{dataset_root / 'coco8'}' was not found"
+            )
 
         return extracted

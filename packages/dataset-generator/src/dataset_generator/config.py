@@ -46,6 +46,7 @@ class GeneratorConfig:
     min_corner_angle_deg: float = 16.0
     max_corner_angle_deg: float = 164.0
     max_edge_aspect_ratio: float = 8.0
+    angle_balance_strength: float = 1.0
     max_attempts: int = 50
     edge_bias_prob: float = 0.40
     edge_band_frac: float = 0.22
@@ -124,6 +125,8 @@ class GeneratorConfig:
             raise ValueError("min_corner_angle_deg must be < max_corner_angle_deg")
         if self.max_edge_aspect_ratio < 1.0:
             raise ValueError("max_edge_aspect_ratio must be >= 1")
+        if self.angle_balance_strength < 0:
+            raise ValueError("angle_balance_strength must be >= 0")
         for name, value in (
             ("blur_prob", self.blur_prob),
             ("motion_blur_prob", self.motion_blur_prob),

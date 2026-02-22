@@ -449,7 +449,9 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                         if candidate is not None:
                             angle_deg = _principal_angle_deg(candidate.projected_corners_px)
                             angle_idx = _angle_bin(angle_deg)
-                            rarity_bonus = 1.0 / float(1 + angle_bin_counts[angle_idx])
+                            max_count = int(np.max(angle_bin_counts)) if int(np.sum(angle_bin_counts)) > 0 else 0
+                            rarity_ratio = float((max_count + 1) / float(angle_bin_counts[angle_idx] + 1))
+                            rarity_bonus = rarity_ratio ** float(config.angle_balance_strength)
                             area_px = polygon_area(candidate.projected_corners_px)
                             area_ratio = float(np.clip(area_px / max(1.0, float(bg_w * bg_h)), 0.0, 1.0))
                             size_penalty = 1.0 - area_ratio
@@ -519,5 +521,19 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                         metadata_out_path=meta_out_path,
                     )
                 )
+
+    angle_counts = [int(v) for v in angle_bin_counts.tolist()]
+    total_angles = max(1, int(sum(angle_counts)))
+    angle_distribution = [float(v / total_angles) for v in angle_counts]
+    write_metadata(
+        config.output_root / "generation_summary.json",
+        {
+            "generator_version": config.generator_version,
+            "curriculum": curriculum,
+            "angle_bin_counts": angle_counts,
+            "angle_bin_distribution": angle_distribution,
+            "num_samples": len(results),
+        },
+    )
 
     return results

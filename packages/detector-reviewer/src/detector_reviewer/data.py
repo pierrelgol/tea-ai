@@ -1,19 +1,22 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
-
-IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".bmp")
+from detector_grader.data import (
+    index_ground_truth,
+    load_labels,
+    load_prediction_labels,
+)
+from detector_grader.pipeline import resolve_model_source
 
 
 @dataclass(slots=True)
 class Label:
     class_id: int
-    corners_norm: np.ndarray  # shape (4, 2)
+    corners_norm: np.ndarray
     confidence: float
 
 
@@ -22,67 +25,70 @@ class Sample:
     split: str
     stem: str
     image_path: Path | None
-    label_path: Path | None
+    gt_label_path: Path | None
+
+
+
+def resolve_model_key(
+    *,
+    model: str,
+    artifacts_root: Path,
+    predictions_root: Path,
+) -> str:
+    _weights, model_key, _existing = resolve_model_source(
+        model_arg=model,
+        weights_arg=None,
+        artifacts_root=artifacts_root,
+        predictions_root=predictions_root,
+    )
+    return model_key
+
 
 
 def index_samples(dataset_root: Path, splits: list[str]) -> list[Sample]:
+    split_set = set(splits)
+    records = index_ground_truth(dataset_root)
     out: list[Sample] = []
-    for split in splits:
-        img_dir = dataset_root / "images" / split
-        lab_dir = dataset_root / "labels" / split
-        stems: set[str] = set()
-
-        if img_dir.exists():
-            stems |= {p.stem for p in img_dir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS}
-        if lab_dir.exists():
-            stems |= {p.stem for p in lab_dir.iterdir() if p.is_file() and p.suffix.lower() == ".txt"}
-
-        for stem in sorted(stems):
-            image_path = None
-            for ext in IMAGE_EXTS:
-                candidate = img_dir / f"{stem}{ext}"
-                if candidate.exists():
-                    image_path = candidate
-                    break
-            label_path = lab_dir / f"{stem}.txt"
-            out.append(
-                Sample(
-                    split=split,
-                    stem=stem,
-                    image_path=image_path,
-                    label_path=label_path if label_path.exists() else None,
-                )
+    for rec in records:
+        if rec.split not in split_set:
+            continue
+        out.append(
+            Sample(
+                split=rec.split,
+                stem=rec.stem,
+                image_path=rec.image_path,
+                gt_label_path=rec.gt_label_path,
             )
+        )
     return out
 
 
-def parse_label_line(line: str, is_prediction: bool) -> Label:
-    parts = line.strip().split()
-    if is_prediction and len(parts) != 10:
-        raise ValueError("expected YOLO OBB prediction line with 10 fields: class x1 y1 x2 y2 x3 y3 x4 y4 conf")
-    if (not is_prediction) and len(parts) != 9:
-        raise ValueError("expected YOLO OBB ground-truth line with 9 fields: class x1 y1 x2 y2 x3 y3 x4 y4")
 
-    class_id = int(parts[0])
-    vals = [float(x) for x in parts[1:]]
-    coords = vals[:8]
-    conf = vals[8] if is_prediction else 1.0
-    corners = np.array(coords, dtype=np.float32).reshape(4, 2)
-    return Label(class_id=class_id, corners_norm=corners, confidence=float(conf))
-
-
-def load_labels(path: Path | None, is_prediction: bool, conf_threshold: float = 0.0) -> list[Label]:
-    if path is None or not path.exists():
+def load_gt_labels(path: Path | None) -> list[Label]:
+    if path is None:
         return []
-    out: list[Label] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        label = parse_label_line(line, is_prediction=is_prediction)
-        if is_prediction and label.confidence < conf_threshold:
-            continue
-        out.append(label)
-    return out
+    labels = load_labels(path, is_prediction=False, conf_threshold=0.0)
+    return [Label(class_id=l.class_id, corners_norm=l.corners_norm, confidence=l.confidence) for l in labels]
+
+
+
+def load_pred_labels(
+    *,
+    predictions_root: Path,
+    model_name: str,
+    split: str,
+    stem: str,
+    conf_threshold: float,
+) -> list[Label]:
+    labels = load_prediction_labels(
+        predictions_root=predictions_root,
+        model_name=model_name,
+        split=split,
+        stem=stem,
+        conf_threshold=conf_threshold,
+    )
+    return [Label(class_id=l.class_id, corners_norm=l.corners_norm, confidence=l.confidence) for l in labels]
+
 
 
 def corners_to_px(corners_norm: np.ndarray, width: int, height: int) -> np.ndarray:
@@ -90,35 +96,3 @@ def corners_to_px(corners_norm: np.ndarray, width: int, height: int) -> np.ndarr
     out[:, 0] *= width
     out[:, 1] *= height
     return out.astype(np.float32)
-
-
-def resolve_latest_weights(
-    artifacts_root: Path,
-    explicit_weights: Path | None,
-) -> Path:
-    if explicit_weights is not None:
-        if explicit_weights.exists():
-            return explicit_weights
-        raise FileNotFoundError(f"weights not found: {explicit_weights}")
-
-    latest_file = artifacts_root / "latest_run.json"
-    if latest_file.exists():
-        payload = json.loads(latest_file.read_text(encoding="utf-8"))
-        best = payload.get("weights_best")
-        if isinstance(best, str) and best:
-            candidate = Path(best)
-            if not candidate.is_absolute():
-                candidate = Path.cwd() / candidate
-            if candidate.exists():
-                return candidate
-
-    # Fallback to newest best.pt under artifacts tree.
-    candidates = sorted(
-        (artifacts_root / "runs").glob("**/weights/best.pt"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    if candidates:
-        return candidates[0]
-
-    raise FileNotFoundError("could not resolve best weights from latest_run.json or artifacts runs")

@@ -7,7 +7,7 @@ Responsibilities:
 - Train YOLO OBB with fixed tuned defaults
 - Save weights + summaries
 - Log to W&B (auto online/offline fallback)
-- Run periodic evaluator checks
+- Run periodic grader checks (inference + scoring)
 
 ## Run
 

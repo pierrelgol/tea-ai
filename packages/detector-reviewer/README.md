@@ -1,24 +1,25 @@
 # detector-reviewer
 
-Visual QA tool to compare model inference against ground truth labels.
+Visual QA tool for ground truth vs existing prediction labels.
 
 ## Features
 
-- Auto-load latest `best.pt` from `artifacts/detector-train/latest_run.json`
-- Run inference on selected samples
-- Overlay GT (green) and predictions (red)
+- Loads dataset samples and prediction files for a selected model key
+- Overlays GT (green) and predictions (red)
 - Filter by split and confidence threshold
-- Navigate samples quickly to inspect failures
-- Strict OBB-only labels and model outputs (fails on bbox formats)
+- Fast sample navigation for failure inspection
 
 ## Run
 
 ```bash
-uv run detector-reviewer --dataset coco128 --datasets-base-root dataset/augmented
+uv run detector-reviewer --dataset coco128 --datasets-base-root dataset/augmented --model latest
 ```
 
-Optional explicit weights:
+Explicit dataset root and prediction source:
 
 ```bash
-uv run detector-reviewer --dataset-root dataset/augmented/coco128 --weights path/to/best.pt
+uv run detector-reviewer \
+  --dataset-root dataset/augmented/coco128 \
+  --predictions-root predictions \
+  --model run-20260222-120000_best
 ```

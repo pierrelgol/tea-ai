@@ -65,10 +65,6 @@ check-augmented-root DATASET_ROOT='dataset/augmented/{{dataset}}': venv
     @uv sync --all-packages
     @uv run augment-checker --dataset-root {{DATASET_ROOT}} --no-gui
 
-evaluate-detector: venv
-    @uv sync --all-packages
-    @uv run detector-evaluator --dataset {{dataset}} --datasets-base-root dataset/augmented --predictions-root predictions
-
 train-detector: venv
     @uv sync --all-packages
     @uv run detector-train --dataset {{dataset}} --datasets-base-root dataset/augmented --artifacts-root artifacts/detector-train

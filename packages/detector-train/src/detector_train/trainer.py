@@ -183,9 +183,7 @@ def _run_periodic_eval(
     run_name: str,
     wandb_run,
 ) -> dict[str, Any]:
-    from detector_evaluator.evaluator import evaluate_models
-    from detector_infer.config import InferConfig
-    from detector_infer.infer import run_inference
+    from detector_grader.pipeline import GradingConfig, run_grading
 
     weights_last = save_dir / "weights" / "last.pt"
     if not weights_last.exists():
@@ -194,36 +192,28 @@ def _run_periodic_eval(
 
     pred_root = config.artifacts_root / "eval_predictions" / run_name / f"epoch_{epoch:03d}"
     reports_dir = config.artifacts_root / "eval_reports" / run_name / f"epoch_{epoch:03d}"
-    model_key = run_name
-
-    infer_cfg = InferConfig(
-        weights=weights_last,
-        dataset_root=config.dataset_root,
-        output_root=pred_root,
-        model_name=model_key,
-        imgsz=config.imgsz,
-        device=device,
-        conf_threshold=config.eval_conf_threshold,
-        iou_threshold=config.eval_iou_threshold,
-        seed=config.seed,
-        splits=["train", "val"],
-        save_empty=True,
-    )
-    infer_summary = run_inference(infer_cfg)
-
-    eval_summary = evaluate_models(
-        dataset_root=config.dataset_root,
-        predictions_root=pred_root,
-        reports_dir=reports_dir,
-        iou_threshold=config.eval_iou_threshold,
-        conf_threshold=config.eval_conf_threshold,
-        seed=config.seed,
-        viz_samples=config.eval_viz_samples,
-        models_filter=[model_key],
+    result = run_grading(
+        GradingConfig(
+            dataset_root=config.dataset_root,
+            predictions_root=pred_root,
+            artifacts_root=config.artifacts_root,
+            reports_dir=reports_dir,
+            model=run_name,
+            weights=weights_last,
+            run_inference=True,
+            splits=["train", "val"],
+            imgsz=config.imgsz,
+            device=device,
+            conf_threshold=config.eval_conf_threshold,
+            infer_iou_threshold=config.eval_iou_threshold,
+            match_iou_threshold=config.eval_iou_threshold,
+            strict_obb=True,
+            seed=config.seed,
+        )
     )
 
-    row = eval_summary["models"][0] if eval_summary["models"] else None
-    if row is not None:
+    row = result.get("eval_like")
+    if row:
         log_wandb(
             wandb_run,
             {
@@ -232,11 +222,8 @@ def _run_periodic_eval(
                 "eval/recall": row.get("recall"),
                 "eval/miss_rate": row.get("miss_rate"),
                 "eval/mean_iou": row.get("mean_iou"),
-                "eval/ap_at_iou": row.get("ap_at_iou"),
                 "eval/mean_center_drift_px": row.get("mean_center_drift_px"),
-                "eval/geometry_mean_corner_error_label_vs_meta_px": row.get(
-                    "geometry_mean_corner_error_label_vs_meta_px"
-                ),
+                "eval/run_grade_0_100": result["aggregate"].get("run_grade_0_100"),
             },
             step=epoch,
         )
@@ -246,8 +233,7 @@ def _run_periodic_eval(
     return {
         "status": "ok",
         "epoch": epoch,
-        "infer": infer_summary,
-        "eval": eval_summary,
+        "grading": result,
     }
 
 

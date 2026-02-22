@@ -12,7 +12,6 @@ members = [
     "augment-checker",
     "dataset-fetcher",
     "dataset-generator",
-    "detector-evaluator",
     "detector-grader",
     "detector-infer",
     "detector-reviewer",
@@ -253,35 +252,20 @@ requires-dist = [
 ]
 
 [[package]]
-name = "detector-evaluator"
-version = "0.1.0"
-source = { editable = "packages/detector-evaluator" }
-dependencies = [
-    { name = "numpy" },
-    { name = "opencv-python-headless" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "numpy", specifier = ">=2.1.0" },
-    { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
-]
-
-[[package]]
 name = "detector-grader"
 version = "0.1.0"
 source = { editable = "packages/detector-grader" }
 dependencies = [
+    { name = "detector-infer" },
     { name = "numpy" },
     { name = "opencv-python-headless" },
-    { name = "ultralytics" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "detector-infer", editable = "packages/detector-infer" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
-    { name = "ultralytics", specifier = ">=8.3.0" },
 ]
 
 [[package]]
@@ -304,18 +288,18 @@ name = "detector-reviewer"
 version = "0.1.0"
 source = { editable = "packages/detector-reviewer" }
 dependencies = [
+    { name = "detector-grader" },
     { name = "numpy" },
     { name = "opencv-python-headless" },
     { name = "pyside6" },
-    { name = "ultralytics" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "detector-grader", editable = "packages/detector-grader" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
     { name = "pyside6", specifier = ">=6.7.0" },
-    { name = "ultralytics", specifier = ">=8.3.0" },
 ]
 
 [[package]]
@@ -323,7 +307,7 @@ name = "detector-train"
 version = "0.1.0"
 source = { editable = "packages/detector-train" }
 dependencies = [
-    { name = "detector-evaluator" },
+    { name = "detector-grader" },
     { name = "detector-infer" },
     { name = "pyyaml" },
     { name = "ultralytics" },
@@ -332,7 +316,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "detector-evaluator", editable = "packages/detector-evaluator" },
+    { name = "detector-grader", editable = "packages/detector-grader" },
     { name = "detector-infer", editable = "packages/detector-infer" },
     { name = "pyyaml", specifier = ">=6.0.1" },
     { name = "ultralytics", specifier = ">=8.3.0" },
@@ -1399,7 +1383,6 @@ dependencies = [
     { name = "augment-checker" },
     { name = "dataset-fetcher" },
     { name = "dataset-generator" },
-    { name = "detector-evaluator" },
     { name = "detector-grader" },
     { name = "detector-infer" },
     { name = "detector-reviewer" },
@@ -1412,7 +1395,6 @@ requires-dist = [
     { name = "augment-checker", editable = "packages/augment-checker" },
     { name = "dataset-fetcher", editable = "packages/dataset-fetcher" },
     { name = "dataset-generator", editable = "packages/dataset-generator" },
-    { name = "detector-evaluator", editable = "packages/detector-evaluator" },
     { name = "detector-grader", editable = "packages/detector-grader" },
     { name = "detector-infer", editable = "packages/detector-infer" },
     { name = "detector-reviewer", editable = "packages/detector-reviewer" },

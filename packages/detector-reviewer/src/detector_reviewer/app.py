@@ -21,32 +21,28 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .data import Label, Sample, corners_to_px, load_labels
+from .data import Label, Sample, corners_to_px, load_gt_labels, load_pred_labels
 
 
 @dataclass(slots=True)
 class ReviewConfig:
     conf_threshold: float
-    iou_threshold: float
-    imgsz: int
-    device: str
 
 
 class ReviewWindow(QMainWindow):
     def __init__(
         self,
         samples: list[Sample],
-        model,
+        predictions_root: Path,
         model_name: str,
         cfg: ReviewConfig,
     ) -> None:
         super().__init__()
         self.samples = samples
-        self.model = model
+        self.predictions_root = predictions_root
         self.model_name = model_name
         self.cfg = cfg
         self.index = 0
-        self.pred_cache: dict[tuple[str, str], list[Label]] = {}
 
         self.setWindowTitle(f"Detector Reviewer - {model_name}")
         self.resize(1400, 900)
@@ -134,48 +130,6 @@ class ReviewWindow(QMainWindow):
         self.index = row
         self.render_current()
 
-    def _predict(self, sample: Sample) -> list[Label]:
-        key = (sample.split, sample.stem)
-        if key in self.pred_cache:
-            return self.pred_cache[key]
-        if sample.image_path is None:
-            self.pred_cache[key] = []
-            return []
-
-        results = self.model.predict(
-            source=str(sample.image_path),
-            conf=self.cfg.conf_threshold,
-            iou=self.cfg.iou_threshold,
-            imgsz=self.cfg.imgsz,
-            device=self.cfg.device,
-            verbose=False,
-        )
-        res = results[0]
-        preds: list[Label] = []
-
-        if getattr(res, "obb", None) is not None:
-            obb = res.obb
-            if hasattr(obb, "xyxyxyxyn") and obb.xyxyxyxyn is not None:
-                coords = obb.xyxyxyxyn.cpu().numpy()
-            elif hasattr(obb, "xyxyxyxy") and obb.xyxyxyxy is not None:
-                px = obb.xyxyxyxy.cpu().numpy()
-                h, w = res.orig_shape[:2]
-                coords = px.astype(np.float64)
-                coords[:, :, 0] /= w
-                coords[:, :, 1] /= h
-            else:
-                coords = np.zeros((0, 4, 2), dtype=np.float32)
-            confs = obb.conf.cpu().numpy() if hasattr(obb, "conf") else np.ones((coords.shape[0],), dtype=np.float32)
-            classes = obb.cls.cpu().numpy().astype(int) if hasattr(obb, "cls") else np.zeros((coords.shape[0],), dtype=int)
-            coords = np.clip(coords, 0.0, 1.0)
-            for i in range(coords.shape[0]):
-                preds.append(Label(class_id=int(classes[i]), corners_norm=coords[i], confidence=float(confs[i])))
-        else:
-            raise RuntimeError("Model prediction does not expose OBB output; OBB model/weights are required")
-
-        self.pred_cache[key] = preds
-        return preds
-
     @staticmethod
     def _draw_poly(img: np.ndarray, corners_px: np.ndarray, color: tuple[int, int, int], text: str) -> None:
         poly = corners_px.astype(np.int32).reshape((-1, 1, 2))
@@ -183,6 +137,9 @@ class ReviewWindow(QMainWindow):
         x = int(np.min(corners_px[:, 0]))
         y = int(np.min(corners_px[:, 1])) - 6
         cv2.putText(img, text, (max(2, x), max(16, y)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+
+    def _prediction_path(self, sample: Sample) -> Path:
+        return self.predictions_root / self.model_name / "labels" / sample.split / f"{sample.stem}.txt"
 
     def render_current(self) -> None:
         if not self.samples:
@@ -198,10 +155,14 @@ class ReviewWindow(QMainWindow):
             return
         h, w = img.shape[:2]
 
-        gt = load_labels(sample.label_path, is_prediction=False)
-        preds = self._predict(sample)
-        conf_threshold = self._conf_value()
-        preds = [p for p in preds if p.confidence >= conf_threshold]
+        gt = load_gt_labels(sample.gt_label_path)
+        preds = load_pred_labels(
+            predictions_root=self.predictions_root,
+            model_name=self.model_name,
+            split=sample.split,
+            stem=sample.stem,
+            conf_threshold=self._conf_value(),
+        )
 
         if self.show_gt.isChecked():
             for idx, label in enumerate(gt):
@@ -218,11 +179,13 @@ class ReviewWindow(QMainWindow):
         pixmap = QPixmap.fromImage(qimg).scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.image_label.setPixmap(pixmap)
 
+        pred_file = self._prediction_path(sample)
         lines = [
             f"sample: {sample.split}/{sample.stem}",
             f"image: {sample.image_path}",
+            f"pred_file: {pred_file}",
             f"gt_boxes: {len(gt)}",
-            f"pred_boxes@{conf_threshold:.2f}: {len(preds)}",
+            f"pred_boxes@{self._conf_value():.2f}: {len(preds)}",
             f"model: {self.model_name}",
         ]
         self.info.setPlainText("\n".join(lines))
@@ -231,24 +194,16 @@ class ReviewWindow(QMainWindow):
 def launch_gui(
     *,
     samples: list[Sample],
-    model,
+    predictions_root: Path,
     model_name: str,
     conf_threshold: float,
-    iou_threshold: float,
-    imgsz: int,
-    device: str,
 ) -> None:
     app = QApplication([])
     window = ReviewWindow(
         samples=samples,
-        model=model,
+        predictions_root=predictions_root,
         model_name=model_name,
-        cfg=ReviewConfig(
-            conf_threshold=conf_threshold,
-            iou_threshold=iou_threshold,
-            imgsz=imgsz,
-            device=device,
-        ),
+        cfg=ReviewConfig(conf_threshold=conf_threshold),
     )
     window.show()
     app.exec()

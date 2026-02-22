@@ -1,15 +1,14 @@
 # detector-grader
 
-CLI scorer for detector runs using strict OBB geometry quality.
+Canonical evaluation and grading tool for detector runs.
 
 ## What it does
 
-- Loads GT OBB labels and prediction OBB labels
-- Resolves model source from `--model` (`latest`, `.`, weights path, run dir, or predictions key)
-- Can run inference automatically before grading
-- Matches predictions to GT with polygon IoU
-- Computes weighted geometric score components (IoU + boundary containment emphasis by default)
-- Produces per-sample, per-split, and global run grades
+- Resolves a model source (`latest`, `.`, weights path, run dir, or prediction key)
+- Optionally runs inference via `detector-infer`
+- Loads GT + prediction OBB labels and scores geometric quality
+- Produces per-sample, per-split, and run-level grading reports
+- Exposes evaluation-like summary metrics for training loops
 
 ## Run
 
@@ -18,5 +17,5 @@ uv run detector-grader \
   --dataset coco128 \
   --datasets-base-root dataset/augmented \
   --predictions-root predictions \
-  --model .
+  --model latest
 ```

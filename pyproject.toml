@@ -10,7 +10,6 @@ dependencies = [
   "detector-reviewer",
   "detector-infer",
   "detector-train",
-  "detector-evaluator",
   "dataset-generator",
   "dataset-fetcher",
   "target-labeller",
@@ -25,7 +24,6 @@ detector-grader = { workspace = true }
 detector-reviewer = { workspace = true }
 detector-infer = { workspace = true }
 detector-train = { workspace = true }
-detector-evaluator = { workspace = true }
 dataset-generator = { workspace = true }
 dataset-fetcher = { workspace = true }
 target-labeller = { workspace = true }

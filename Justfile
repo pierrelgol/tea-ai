@@ -53,3 +53,15 @@ generate-augmented: venv
 check-augmented: venv
     @uv sync --all-packages
     @uv run augment-checker --dataset-root dataset/augmented --reports-dir dataset/augmented/reports
+
+evaluate-detector: venv
+    @uv sync --all-packages
+    @uv run detector-evaluator --dataset-root dataset/augmented --predictions-root predictions --reports-dir dataset/augmented/eval_reports
+
+train-detector: venv
+    @uv sync --all-packages
+    @uv run detector-train --dataset-root dataset/augmented --artifacts-root artifacts/detector-train
+
+infer-detector WEIGHTS MODEL: venv
+    @uv sync --all-packages
+    @uv run detector-infer --weights {{WEIGHTS}} --model-name {{MODEL}} --dataset-root dataset/augmented --output-root predictions

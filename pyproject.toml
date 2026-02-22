@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "augment-checker",
+  "detector-infer",
+  "detector-train",
+  "detector-evaluator",
   "dataset-generator",
   "dataset-fetcher",
   "target-labeller",
@@ -16,6 +19,9 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 augment-checker = { workspace = true }
+detector-infer = { workspace = true }
+detector-train = { workspace = true }
+detector-evaluator = { workspace = true }
 dataset-generator = { workspace = true }
 dataset-fetcher = { workspace = true }
 target-labeller = { workspace = true }

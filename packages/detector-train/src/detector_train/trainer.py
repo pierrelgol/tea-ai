@@ -56,6 +56,38 @@ def _json_safe(obj):
     return json.loads(json.dumps(obj, default=str))
 
 
+def _extract_epoch_metrics(trainer) -> dict[str, float]:
+    out: dict[str, float] = {}
+
+    metrics = getattr(trainer, "metrics", None)
+    if isinstance(metrics, dict):
+        for k, v in metrics.items():
+            try:
+                out[f"train/{k}"] = float(v)
+            except Exception:
+                continue
+
+    tloss = getattr(trainer, "tloss", None)
+    if tloss is not None:
+        try:
+            arr = tloss.detach().cpu().numpy().reshape(-1)
+            for i, v in enumerate(arr):
+                out[f"train/loss_{i}"] = float(v)
+        except Exception:
+            pass
+
+    optimizer = getattr(trainer, "optimizer", None)
+    if optimizer is not None:
+        try:
+            lrs = [float(pg.get("lr", 0.0)) for pg in optimizer.param_groups]
+            if lrs:
+                out["train/lr"] = lrs[0]
+        except Exception:
+            pass
+
+    return out
+
+
 def _run_periodic_eval(
     *,
     config: TrainConfig,
@@ -173,11 +205,17 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
 
         def _on_fit_epoch_end(trainer) -> None:
             nonlocal last_eval_epoch
-            if not config.eval_enabled:
-                return
 
             current_epoch = int(getattr(trainer, "epoch", -1)) + 1
             if current_epoch <= 0:
+                return
+
+            # Always log train metrics each epoch for better W&B tracking.
+            epoch_metrics = _extract_epoch_metrics(trainer)
+            if epoch_metrics:
+                log_wandb(wandb_run, epoch_metrics, step=current_epoch)
+
+            if not config.eval_enabled:
                 return
             if current_epoch == last_eval_epoch:
                 return

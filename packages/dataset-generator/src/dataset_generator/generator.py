@@ -332,10 +332,17 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
     class_ids = sorted(target_indices_by_class.keys())
     class_weights = np.ones((len(class_ids),), dtype=np.float64)
     if class_ids:
+        frequencies = np.array([len(target_indices_by_class[cid]) for cid in class_ids], dtype=np.float64)
+        if float(np.sum(frequencies)) > 0:
+            balance_weights = (1.0 / np.maximum(frequencies, 1.0)) ** float(config.class_balance_strength)
+            balance_weights = balance_weights / max(float(np.sum(balance_weights)), 1e-9)
+        else:
+            balance_weights = np.ones_like(frequencies)
         max_boost = max([hard_boost_raw.get(cid, 0.0) for cid in class_ids], default=0.0)
         for i, cid in enumerate(class_ids):
             rel = 0.0 if max_boost <= 0 else (hard_boost_raw.get(cid, 0.0) / max_boost)
-            class_weights[i] = 1.0 + float(config.hard_example_boost) * rel
+            hard_weight = 1.0 + float(config.hard_example_boost) * rel
+            class_weights[i] = float(balance_weights[i]) * hard_weight
         class_weights = class_weights / max(float(np.sum(class_weights)), 1e-9)
 
     backgrounds_by_split = load_backgrounds_by_split(config.background_splits)

@@ -54,6 +54,18 @@ class CheckerWindow(QMainWindow):
         self.outliers_only = QCheckBox("Outliers only")
         self.outliers_only.stateChanged.connect(self._reload_list)
 
+        self.show_green_overlay = QCheckBox("Show green label overlay")
+        self.show_green_overlay.setChecked(True)
+        self.show_green_overlay.stateChanged.connect(
+            lambda _state: self._on_row_changed(self.sample_list.currentRow())
+        )
+
+        self.show_red_overlay = QCheckBox("Show red metadata overlay")
+        self.show_red_overlay.setChecked(True)
+        self.show_red_overlay.stateChanged.connect(
+            lambda _state: self._on_row_changed(self.sample_list.currentRow())
+        )
+
         self.model_selector = QComboBox()
         model_names = ["all"] + [m.model_name for m in self.model_reports]
         self.model_selector.addItems(model_names)
@@ -73,6 +85,8 @@ class CheckerWindow(QMainWindow):
         side.addWidget(QLabel("Split"))
         side.addWidget(self.split_filter)
         side.addWidget(self.outliers_only)
+        side.addWidget(self.show_green_overlay)
+        side.addWidget(self.show_red_overlay)
         side.addWidget(QLabel("Model"))
         side.addWidget(self.model_selector)
         side.addWidget(QLabel("Samples"))
@@ -127,7 +141,7 @@ class CheckerWindow(QMainWindow):
         if img is None:
             return
 
-        if rec.label_path is not None:
+        if self.show_green_overlay.isChecked() and rec.label_path is not None:
             try:
                 label = load_yolo_label(rec.label_path)
                 h, w = img.shape[:2]
@@ -136,7 +150,7 @@ class CheckerWindow(QMainWindow):
             except Exception:
                 pass
 
-        if rec.meta_path is not None:
+        if self.show_red_overlay.isChecked() and rec.meta_path is not None:
             try:
                 meta = json.loads(rec.meta_path.read_text(encoding="utf-8"))
                 corners = meta.get("projected_corners_px", [])

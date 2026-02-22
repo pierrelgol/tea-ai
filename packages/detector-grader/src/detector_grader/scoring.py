@@ -19,19 +19,19 @@ from .geometry import (
 
 @dataclass(slots=True)
 class ScoreWeights:
-    iou: float = 0.50
-    corner: float = 0.28
-    angle: float = 0.08
-    center: float = 0.06
-    shape: float = 0.08
+    iou: float = 0.32
+    corner: float = 0.20
+    angle: float = 0.24
+    center: float = 0.14
+    shape: float = 0.10
 
-    fn_penalty: float = 0.35
-    fp_penalty: float = 0.20
-    containment_miss_penalty: float = 0.35
-    containment_outside_penalty: float = 0.20
+    fn_penalty: float = 0.30
+    fp_penalty: float = 0.18
+    containment_miss_penalty: float = 0.22
+    containment_outside_penalty: float = 0.08
     tau_corner_px: float = 20.0
-    tau_center_px: float = 24.0
-    iou_gamma: float = 1.6
+    tau_center_px: float = 20.0
+    iou_gamma: float = 1.2
 
     def normalized(self) -> "ScoreWeights":
         s = self.iou + self.corner + self.angle + self.center + self.shape
@@ -58,6 +58,7 @@ class Match:
     gt_idx: int
     pred_idx: int
     iou: float
+    quality: float
 
 
 @dataclass(slots=True)
@@ -90,23 +91,40 @@ def _poly_px(label: Label, w: int, h: int) -> np.ndarray:
     return (label.corners_norm * np.array([[w, h]], dtype=np.float32)).astype(np.float32)
 
 
-def _greedy_match(gt_polys: list[np.ndarray], pred_polys: list[np.ndarray], iou_threshold: float) -> tuple[list[Match], list[int], list[int]]:
-    candidates: list[tuple[float, int, int]] = []
+def _greedy_match(
+    gt_polys: list[np.ndarray],
+    pred_polys: list[np.ndarray],
+    gt_class_ids: list[int],
+    pred_class_ids: list[int],
+    iou_threshold: float,
+) -> tuple[list[Match], list[int], list[int]]:
+    candidates: list[tuple[float, float, int, int]] = []
     for gi, g in enumerate(gt_polys):
+        g_center = np.mean(g, axis=0)
+        g_diag = float(np.linalg.norm(np.max(g, axis=0) - np.min(g, axis=0)))
+        g_angle = principal_angle_deg(g)
         for pi, p in enumerate(pred_polys):
             iou = polygon_iou(g, p)
             if iou >= iou_threshold:
-                candidates.append((iou, gi, pi))
-    candidates.sort(key=lambda x: (-x[0], x[1], x[2]))
+                p_reordered = reorder_corners_to_best(g, p)
+                p_center = np.mean(p_reordered, axis=0)
+                center_err = float(np.linalg.norm(g_center - p_center)) / max(g_diag, 1e-6)
+                center_score = float(np.exp(-center_err / 0.20))
+                angle_err = angle_diff_deg(g_angle, principal_angle_deg(p_reordered))
+                angle_score = float(np.clip(1.0 - (angle_err / 90.0), 0.0, 1.0))
+                class_score = 1.0 if gt_class_ids[gi] == pred_class_ids[pi] else 0.7
+                quality = float((iou ** 1.5) * center_score * (0.7 + 0.3 * angle_score) * class_score)
+                candidates.append((quality, iou, gi, pi))
+    candidates.sort(key=lambda x: (-x[0], -x[1], x[2], x[3]))
     used_g: set[int] = set()
     used_p: set[int] = set()
     matches: list[Match] = []
-    for iou, gi, pi in candidates:
+    for quality, iou, gi, pi in candidates:
         if gi in used_g or pi in used_p:
             continue
         used_g.add(gi)
         used_p.add(pi)
-        matches.append(Match(gt_idx=gi, pred_idx=pi, iou=iou))
+        matches.append(Match(gt_idx=gi, pred_idx=pi, iou=iou, quality=quality))
     unmatched_g = [i for i in range(len(gt_polys)) if i not in used_g]
     unmatched_p = [i for i in range(len(pred_polys)) if i not in used_p]
     return matches, unmatched_g, unmatched_p
@@ -145,6 +163,14 @@ def _edge_rel_error(gt: np.ndarray, pred: np.ndarray) -> float:
     return float(np.mean(np.abs(gt_l - pr_l)))
 
 
+def _orientation_reliability(poly: np.ndarray) -> float:
+    lengths = edge_lengths(poly)
+    longest = float(np.max(lengths))
+    shortest = float(max(np.min(lengths), 1e-9))
+    ratio = longest / shortest
+    return float(np.clip((ratio - 1.0) / 0.35, 0.0, 1.0))
+
+
 def _stat_or_none(vals: list[float], fn: str) -> float | None:
     if not vals:
         return None
@@ -172,7 +198,9 @@ def compute_match_components(gt: np.ndarray, pred: np.ndarray, weights: ScoreWei
     angle_gt = principal_angle_deg(gt)
     angle_pr = principal_angle_deg(pred_reordered)
     angle_err = angle_diff_deg(angle_gt, angle_pr)
-    angle_score = float(np.clip(1.0 - (angle_err / 90.0), 0.0, 1.0))
+    angle_score_raw = float(np.clip(1.0 - (angle_err / 90.0), 0.0, 1.0))
+    orientation_weight = min(_orientation_reliability(gt), _orientation_reliability(pred_reordered))
+    angle_score = float(orientation_weight * angle_score_raw + (1.0 - orientation_weight) * 1.0)
 
     center_err = polygon_center_drift_px(gt, pred_reordered)
     center_score = _safe_exp_score(center_err, weights.tau_center_px)
@@ -260,7 +288,13 @@ def score_sample(
     gt_polys = [_poly_px(g, w, h) for g in gt_labels]
     pred_polys = [_poly_px(p, w, h) for p in pred_labels]
 
-    matches, unmatched_gt, unmatched_pred = _greedy_match(gt_polys, pred_polys, iou_threshold)
+    matches, unmatched_gt, unmatched_pred = _greedy_match(
+        gt_polys,
+        pred_polys,
+        [g.class_id for g in gt_labels],
+        [p.class_id for p in pred_labels],
+        iou_threshold,
+    )
 
     comps: list[MatchComponents] = []
     diags: list[MatchDiagnostics] = []
@@ -358,6 +392,7 @@ def score_sample(
         "num_fn": len(unmatched_gt),
         "num_fp": len(unmatched_pred),
         "match_iou_mean": float(np.mean([m.iou for m in matches])) if matches else None,
+        "match_quality_mean": float(np.mean([m.quality for m in matches])) if matches else None,
         "components_mean": comp_mean,
         "diagnostics": diagnostics,
         "num_class_mismatch": int(sum(1 for d in diags if d.class_match == 0)),

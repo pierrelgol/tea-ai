@@ -14,7 +14,7 @@ def _fmt_float(v: float | None, digits: int = 4) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Grade detector runs from strict OBB geometry quality")
-    parser.add_argument("--dataset", default="coco8", help="Dataset name under dataset/augmented/")
+    parser.add_argument("--dataset", default="coco1024", help="Dataset name under dataset/augmented/")
     parser.add_argument("--model", default="latest", help="Prediction model key or latest")
     parser.add_argument("--run-inference", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--conf-threshold", type=float, default=0.25, help="Confidence threshold for infer + grading")

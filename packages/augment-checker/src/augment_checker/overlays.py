@@ -48,7 +48,10 @@ def export_debug_overlays(records: list[SampleRecord], reports_dir: Path, n_per_
             if not isinstance(targets, list) or not targets:
                 continue
             for i, t in enumerate(targets):
-                corners = np.array(t["projected_corners_px"], dtype=np.float32)
+                corners_payload = t.get("projected_corners_px_rect_obb", t.get("projected_corners_px"))
+                if corners_payload is None:
+                    continue
+                corners = np.array(corners_payload, dtype=np.float32)
                 _draw_polygon(img, corners, (0, 0, 255), f"M{i+1}")
 
             out_path = out_dir / f"{rec.stem}.jpg"

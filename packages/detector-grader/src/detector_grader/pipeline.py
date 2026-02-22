@@ -45,22 +45,23 @@ class GradingConfig:
 
 
 def load_weights_profile(path: Path | None) -> ScoreWeights:
+    defaults = ScoreWeights()
     if path is None:
-        return ScoreWeights().normalized()
+        return defaults.normalized()
     payload = json.loads(path.read_text(encoding="utf-8"))
     return ScoreWeights(
-        iou=float(payload.get("iou", 0.50)),
-        corner=float(payload.get("corner", 0.28)),
-        angle=float(payload.get("angle", 0.08)),
-        center=float(payload.get("center", 0.06)),
-        shape=float(payload.get("shape", 0.08)),
-        fn_penalty=float(payload.get("fn_penalty", 0.35)),
-        fp_penalty=float(payload.get("fp_penalty", 0.20)),
-        containment_miss_penalty=float(payload.get("containment_miss_penalty", 0.35)),
-        containment_outside_penalty=float(payload.get("containment_outside_penalty", 0.20)),
-        tau_corner_px=float(payload.get("tau_corner_px", 20.0)),
-        tau_center_px=float(payload.get("tau_center_px", 24.0)),
-        iou_gamma=float(payload.get("iou_gamma", 1.6)),
+        iou=float(payload.get("iou", defaults.iou)),
+        corner=float(payload.get("corner", defaults.corner)),
+        angle=float(payload.get("angle", defaults.angle)),
+        center=float(payload.get("center", defaults.center)),
+        shape=float(payload.get("shape", defaults.shape)),
+        fn_penalty=float(payload.get("fn_penalty", defaults.fn_penalty)),
+        fp_penalty=float(payload.get("fp_penalty", defaults.fp_penalty)),
+        containment_miss_penalty=float(payload.get("containment_miss_penalty", defaults.containment_miss_penalty)),
+        containment_outside_penalty=float(payload.get("containment_outside_penalty", defaults.containment_outside_penalty)),
+        tau_corner_px=float(payload.get("tau_corner_px", defaults.tau_corner_px)),
+        tau_center_px=float(payload.get("tau_center_px", defaults.tau_center_px)),
+        iou_gamma=float(payload.get("iou_gamma", defaults.iou_gamma)),
     ).normalized()
 
 

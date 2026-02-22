@@ -32,6 +32,8 @@ from .io import (
 from .photometric import apply_photometric_stack
 from .synthesis import blend_layer, visible_ratio, warp_target_and_mask
 
+MIN_RAW_RECT_IOU = 0.72
+
 
 @dataclass(slots=True)
 class SampleResult:
@@ -44,6 +46,7 @@ class SampleResult:
 class PlacedTarget:
     target: CanonicalTarget
     projected_corners_px: np.ndarray
+    projected_corners_px_raw: np.ndarray
     projected_corners_norm: np.ndarray
     warped_mask: np.ndarray
     class_id_exported: int
@@ -94,12 +97,77 @@ def _is_valid_projected_obb(projected_corners: np.ndarray, image_w: int, image_h
         return False
     if polygon_area(projected_corners) < config.min_target_area_px:
         return False
+    edge_lengths: list[float] = []
     for i in range(4):
         p0 = projected_corners[i]
         p1 = projected_corners[(i + 1) % 4]
-        if float(np.linalg.norm(p1 - p0)) < config.min_edge_length_px:
+        edge_len = float(np.linalg.norm(p1 - p0))
+        edge_lengths.append(edge_len)
+        if edge_len < config.min_edge_length_px:
+            return False
+    longest = max(edge_lengths)
+    shortest = max(1e-9, min(edge_lengths))
+    if (longest / shortest) > config.max_edge_aspect_ratio:
+        return False
+    for i in range(4):
+        v_prev = projected_corners[(i - 1) % 4] - projected_corners[i]
+        v_next = projected_corners[(i + 1) % 4] - projected_corners[i]
+        n_prev = float(np.linalg.norm(v_prev))
+        n_next = float(np.linalg.norm(v_next))
+        if n_prev <= 1e-9 or n_next <= 1e-9:
+            return False
+        c = float(np.clip(np.dot(v_prev, v_next) / (n_prev * n_next), -1.0, 1.0))
+        angle = float(np.degrees(np.arccos(c)))
+        if angle < config.min_corner_angle_deg or angle > config.max_corner_angle_deg:
             return False
     return True
+
+
+def _principal_angle_deg(quad: np.ndarray) -> float:
+    edges: list[tuple[float, np.ndarray]] = []
+    for i in range(4):
+        v = quad[(i + 1) % 4] - quad[i]
+        edges.append((float(np.linalg.norm(v)), v))
+    edges.sort(key=lambda x: x[0], reverse=True)
+    vec = edges[0][1]
+    return float(np.degrees(np.arctan2(float(vec[1]), float(vec[0]))) % 180.0)
+
+
+def _angle_bin(angle_deg: float, n_bins: int = 12) -> int:
+    step = 180.0 / float(n_bins)
+    idx = int(np.floor(angle_deg / step))
+    return max(0, min(n_bins - 1, idx))
+
+
+def _canonicalize_quad_cw_start_tl(quad: np.ndarray) -> np.ndarray:
+    center = np.mean(quad, axis=0)
+    angles = np.arctan2(quad[:, 1] - center[1], quad[:, 0] - center[0])
+    order = np.argsort(angles)
+    ccw = quad[order]
+    cw = ccw[::-1].copy()
+    start = int(np.argmin(cw[:, 1] * 100000.0 + cw[:, 0]))
+    return np.roll(cw, -start, axis=0).astype(np.float32)
+
+
+def _polygon_iou(a: np.ndarray, b: np.ndarray) -> float:
+    pa = a.astype(np.float32).reshape(-1, 1, 2)
+    pb = b.astype(np.float32).reshape(-1, 1, 2)
+    area_a = polygon_area(a)
+    area_b = polygon_area(b)
+    if area_a <= 0.0 or area_b <= 0.0:
+        return 0.0
+    inter_area, _ = cv2.intersectConvexConvex(pa, pb)
+    inter = float(max(0.0, inter_area))
+    union = area_a + area_b - inter
+    if union <= 0.0:
+        return 0.0
+    return inter / union
+
+
+def _fit_rectangular_obb(projected_quad: np.ndarray) -> np.ndarray:
+    rect = cv2.minAreaRect(projected_quad.astype(np.float32))
+    corners = cv2.boxPoints(rect).astype(np.float32)
+    return _canonicalize_quad_cw_start_tl(corners)
 
 
 def _try_place_target(
@@ -120,10 +188,16 @@ def _try_place_target(
         rng=rng,
         params=homography_params,
     )
-    projected_corners = apply_homography_to_points(hs.H, target.canonical_corners_px)
-    if not _is_valid_projected_obb(projected_corners, bg_w, bg_h, config):
+    projected_corners_raw = apply_homography_to_points(hs.H, target.canonical_corners_px)
+    if not _is_valid_projected_obb(projected_corners_raw, bg_w, bg_h, config):
         return None
-    projected_corners_norm = corners_px_to_yolo_obb(projected_corners, bg_w, bg_h)
+    projected_corners_rect = _fit_rectangular_obb(projected_corners_raw)
+    if not _is_valid_projected_obb(projected_corners_rect, bg_w, bg_h, config):
+        return None
+    raw_rect_iou = _polygon_iou(projected_corners_raw, projected_corners_rect)
+    if raw_rect_iou < MIN_RAW_RECT_IOU:
+        return None
+    projected_corners_norm = corners_px_to_yolo_obb(projected_corners_rect, bg_w, bg_h)
 
     warped_target, warped_mask = warp_target_and_mask(
         target=target_image,
@@ -145,14 +219,18 @@ def _try_place_target(
         "target_class_id_exported": class_id_exported,
         "H": hs.H.tolist(),
         "canonical_corners_px": target.canonical_corners_px.tolist(),
-        "projected_corners_px": projected_corners.tolist(),
+        "projected_corners_px_raw": projected_corners_raw.tolist(),
+        "projected_corners_px_rect_obb": projected_corners_rect.tolist(),
+        "projected_corners_px": projected_corners_rect.tolist(),
         "projected_corners_yolo_obb": projected_corners_norm.tolist(),
+        "rect_fit_iou_raw_vs_rect": raw_rect_iou,
         "visible_ratio": ratio_visible,
         "occlusion_ratio": occlusion_ratio,
     }
     return PlacedTarget(
         target=target,
-        projected_corners_px=projected_corners,
+        projected_corners_px=projected_corners_rect,
+        projected_corners_px_raw=projected_corners_raw,
         projected_corners_norm=projected_corners_norm,
         warped_mask=warped_mask,
         class_id_exported=class_id_exported,
@@ -215,6 +293,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
         edge_band_frac=config.edge_band_frac,
     )
     rng = np.random.default_rng(config.seed)
+    angle_bin_counts = np.zeros(12, dtype=np.int32)
     results: list[SampleResult] = []
 
     for split in ("train", "val"):
@@ -242,6 +321,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
 
                 for _ in range(n_targets):
                     placed_target: PlacedTarget | None = None
+                    placed_score = -1.0
                     for _attempt in range(config.max_attempts):
                         target = targets[int(rng.integers(0, len(targets)))]
                         key = str(target.image_path)
@@ -251,7 +331,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                                 break
                             target_images_cache[key] = image
                         target_image = target_images_cache[key]
-                        placed_target = _try_place_target(
+                        candidate = _try_place_target(
                             background=composited,
                             target=target,
                             target_image=target_image,
@@ -260,8 +340,18 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                             rng=rng,
                             config=config,
                         )
-                        if placed_target is not None:
-                            break
+                        if candidate is not None:
+                            angle_deg = _principal_angle_deg(candidate.projected_corners_px)
+                            angle_idx = _angle_bin(angle_deg)
+                            rarity_bonus = 1.0 / float(1 + angle_bin_counts[angle_idx])
+                            area_px = polygon_area(candidate.projected_corners_px)
+                            area_ratio = float(np.clip(area_px / max(1.0, float(bg_w * bg_h)), 0.0, 1.0))
+                            size_penalty = 1.0 - area_ratio
+                            score = 0.75 * rarity_bonus + 0.25 * size_penalty
+                            if score > placed_score:
+                                placed_score = score
+                                candidate.placement["principal_angle_deg"] = angle_deg
+                                placed_target = candidate
                     if placed_target is None:
                         continue
 
@@ -280,6 +370,13 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                     )
                     occupancy_mask = occupancy_mask | (warped_mask > 0)
                     placed.append(placed_target)
+                    angle_deg = float(
+                        placed_target.placement.get(
+                            "principal_angle_deg",
+                            _principal_angle_deg(placed_target.projected_corners_px),
+                        )
+                    )
+                    angle_bin_counts[_angle_bin(angle_deg)] += 1
 
                 if not placed and n_targets > 0:
                     continue

@@ -19,7 +19,7 @@ def load_dataset_config(dataset_name: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate synthetic augmented dataset")
     parser.add_argument(
-        "--dataset", default="coco8", help="Dataset directory name under dataset/"
+        "--dataset", default="coco1024", help="Dataset directory name under dataset/"
     )
     parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()

@@ -30,7 +30,7 @@ def _resolve_model_arg(model_arg: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train detector model (lean pipeline)")
-    parser.add_argument("--dataset", default="coco8", help="Dataset name under dataset/augmented/")
+    parser.add_argument("--dataset", default="coco1024", help="Dataset name under dataset/augmented/")
     parser.add_argument("--model", default=HF_DEFAULT_ALIAS)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()

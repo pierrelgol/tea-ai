@@ -18,7 +18,7 @@ MAX_MEAN_CORNER_ERROR_PX = 1.5
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Check augmented dataset integrity and geometry")
-    parser.add_argument("--dataset", default="coco8", help="Dataset name under dataset/augmented/")
+    parser.add_argument("--dataset", default="coco1024", help="Dataset name under dataset/augmented/")
     parser.add_argument("--outlier-threshold-px", type=float, default=2.0)
     parser.add_argument("--debug-overlays-per-split", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)

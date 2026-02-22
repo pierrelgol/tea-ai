@@ -6,6 +6,7 @@ from typing import Any
 
 import csv
 import json
+import os
 import re
 import shutil
 
@@ -27,6 +28,64 @@ def _resolve_device(requested: str) -> str:
     except Exception:
         pass
     return "cpu"
+
+
+def _configure_torch_runtime(config: TrainConfig) -> None:
+    try:
+        import torch
+
+        if hasattr(torch.backends, "cuda"):
+            if hasattr(torch.backends.cuda, "matmul"):
+                torch.backends.cuda.matmul.allow_tf32 = bool(config.tf32)
+            if hasattr(torch.backends, "cudnn"):
+                torch.backends.cudnn.allow_tf32 = bool(config.tf32)
+                torch.backends.cudnn.benchmark = bool(config.cudnn_benchmark)
+    except Exception:
+        pass
+
+
+def _dataset_images_size_bytes(dataset_root: Path) -> int:
+    total = 0
+    for split in ("train", "val"):
+        images_dir = dataset_root / "images" / split
+        if not images_dir.exists():
+            continue
+        for p in images_dir.iterdir():
+            if not p.is_file():
+                continue
+            if p.suffix.lower() not in {".jpg", ".jpeg", ".png", ".bmp"}:
+                continue
+            try:
+                total += p.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def _resolve_cache_mode(requested: str, dataset_root: Path) -> str | bool:
+    if requested == "false":
+        return False
+    if requested in {"ram", "disk"}:
+        return requested
+    # auto: prefer RAM cache only when dataset comfortably fits available memory.
+    dataset_bytes = _dataset_images_size_bytes(dataset_root)
+    if dataset_bytes <= 0:
+        return "disk"
+    available = 0
+    try:
+        import psutil  # type: ignore
+
+        available = int(psutil.virtual_memory().available)
+    except Exception:
+        try:
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            avail_pages = os.sysconf("SC_AVPHYS_PAGES")
+            available = int(page_size * avail_pages)
+        except Exception:
+            available = 0
+    if available > 0 and dataset_bytes * 3 <= available:
+        return "ram"
+    return "disk"
 
 
 def _json_safe(obj):
@@ -241,7 +300,9 @@ def _run_periodic_eval(
 
 def train_detector(config: TrainConfig) -> dict[str, Any]:
     config.validate()
+    _configure_torch_runtime(config)
     device = _resolve_device(config.device)
+    cache_mode = _resolve_cache_mode(config.cache, config.dataset_root)
     project_dir = config.project if config.project.is_absolute() else (Path.cwd() / config.project)
     project_dir = project_dir.resolve()
 
@@ -260,7 +321,13 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "device": device,
         "seed": config.seed,
         "workers": config.workers,
+        "cache": cache_mode,
+        "cache_requested": config.cache,
         "patience": config.patience,
+        "amp": config.amp,
+        "plots": config.plots,
+        "tf32": config.tf32,
+        "cudnn_benchmark": config.cudnn_benchmark,
         "optimizer": config.optimizer,
         "lr0": config.lr0,
         "lrf": config.lrf,
@@ -406,6 +473,9 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             "seed": config.seed,
             "workers": config.workers,
             "patience": config.patience,
+            "cache": cache_mode,
+            "amp": config.amp,
+            "plots": config.plots,
             "exist_ok": True,
             "optimizer": config.optimizer,
             "lr0": config.lr0,

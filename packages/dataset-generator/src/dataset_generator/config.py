@@ -37,6 +37,9 @@ class GeneratorConfig:
     min_quad_area_frac: float = 0.0015
     min_target_area_px: float = 24.0
     min_edge_length_px: float = 4.0
+    min_corner_angle_deg: float = 16.0
+    max_corner_angle_deg: float = 164.0
+    max_edge_aspect_ratio: float = 8.0
     max_attempts: int = 50
     edge_bias_prob: float = 0.40
     edge_band_frac: float = 0.22
@@ -97,6 +100,14 @@ class GeneratorConfig:
             raise ValueError("min_target_area_px must be > 0")
         if self.min_edge_length_px <= 0:
             raise ValueError("min_edge_length_px must be > 0")
+        if self.min_corner_angle_deg <= 0 or self.min_corner_angle_deg >= 90:
+            raise ValueError("min_corner_angle_deg must be in (0,90)")
+        if self.max_corner_angle_deg <= 90 or self.max_corner_angle_deg >= 180:
+            raise ValueError("max_corner_angle_deg must be in (90,180)")
+        if self.min_corner_angle_deg >= self.max_corner_angle_deg:
+            raise ValueError("min_corner_angle_deg must be < max_corner_angle_deg")
+        if self.max_edge_aspect_ratio < 1.0:
+            raise ValueError("max_edge_aspect_ratio must be >= 1")
         for name, value in (
             ("blur_prob", self.blur_prob),
             ("motion_blur_prob", self.motion_blur_prob),

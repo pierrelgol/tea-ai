@@ -50,9 +50,15 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
                 raise ValueError("metadata missing targets list")
 
             projected_list: list[np.ndarray] = []
+            projected_raw_list: list[np.ndarray] = []
             canonical_list: list[np.ndarray] = []
             for t in targets:
-                projected_list.append(np.array(t["projected_corners_px"], dtype=np.float32))
+                raw = t.get("projected_corners_px_raw", t.get("projected_corners_px"))
+                rect = t.get("projected_corners_px_rect_obb", t.get("projected_corners_px"))
+                if raw is None or rect is None:
+                    raise ValueError("metadata missing projected corners (raw/rect)")
+                projected_raw_list.append(np.array(raw, dtype=np.float32))
+                projected_list.append(np.array(rect, dtype=np.float32))
                 canonical_list.append(np.array(t["canonical_corners_px"], dtype=np.float32))
 
             if len(projected_list) != len(labels):
@@ -65,7 +71,7 @@ def run_geometry_checks(records: list[SampleRecord], outlier_threshold_px: float
                 canonical = canonical_list[idx]
                 H_obj = np.array(targets[idx]["H"], dtype=np.float64)
                 projected_est = _apply_h(H_obj, canonical)
-                corner_err = np.linalg.norm(projected_est - projected_stored, axis=1)
+                corner_err = np.linalg.norm(projected_est - projected_raw_list[idx], axis=1)
                 mean_errs.append(float(np.mean(corner_err)))
                 max_errs.append(float(np.max(corner_err)))
                 label_poly = label_to_pixel_corners(labels[idx], w, h)

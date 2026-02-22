@@ -18,9 +18,14 @@ class TrainConfig:
 
     epochs: int = 100
     imgsz: int = 640
-    batch: int = 6
-    workers: int = 8
+    batch: int = 16
+    workers: int = 12
     patience: int = 40
+    cache: str = "auto"  # auto|false|ram|disk
+    amp: bool = True
+    plots: bool = True
+    tf32: bool = True
+    cudnn_benchmark: bool = True
 
     optimizer: str = "AdamW"
     lr0: float = 0.0015
@@ -81,6 +86,8 @@ class TrainConfig:
             raise ValueError("workers must be >= 0")
         if self.patience < 0:
             raise ValueError("patience must be >= 0")
+        if self.cache not in {"auto", "false", "ram", "disk"}:
+            raise ValueError("cache must be one of: auto, false, ram, disk")
         if self.optimizer not in {"SGD", "AdamW", "auto"}:
             raise ValueError("optimizer must be one of: SGD, AdamW, auto")
         if self.lr0 <= 0:

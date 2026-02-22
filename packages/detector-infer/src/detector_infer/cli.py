@@ -10,7 +10,7 @@ from .infer import run_inference
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run detector inference and export YOLO predictions")
     parser.add_argument("--weights", type=Path, required=True)
-    parser.add_argument("--dataset", default="coco8", help="Dataset name under dataset/augmented/")
+    parser.add_argument("--dataset", default="coco1024", help="Dataset name under dataset/augmented/")
     parser.add_argument("--model-name", required=True)
     parser.add_argument("--conf-threshold", type=float, default=0.25)
     parser.add_argument("--seed", type=int, default=42)

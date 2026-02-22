@@ -371,6 +371,10 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "dino_distill_channels": config.dino_distill_channels,
         "dino_distill_object_weight": config.dino_distill_object_weight,
         "dino_distill_background_weight": config.dino_distill_background_weight,
+        "stage_a_ratio": config.stage_a_ratio,
+        "stage_a_freeze": config.stage_a_freeze,
+        "stage_a_distill_weight": config.stage_a_distill_weight,
+        "stage_b_distill_weight": config.stage_b_distill_weight,
         "classes_count": len(names),
         "wandb_log_every_epoch": config.wandb_log_every_epoch,
         "wandb_log_system_metrics": config.wandb_log_system_metrics,
@@ -402,25 +406,11 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         if eval_reports_root.exists():
             shutil.rmtree(eval_reports_root)
 
-        model = YOLO(config.model)
-        model_task = str(getattr(model, "task", "")).strip().lower()
-        if model_task != "obb":
-            raise RuntimeError(
-                f"model is not an OBB model (task={model_task!r}): {config.model}. "
-                "Use an OBB checkpoint."
-            )
-        trainer_factory = partial(
-            DinoOBBTrainer,
-            dino_cfg=DinoDistillConfig(
-                dino_root=config.dino_root,
-                weight=config.dino_distill_weight,
-                warmup_epochs=config.dino_distill_warmup_epochs,
-                student_layers=tuple(int(v) for v in config.dino_distill_layers),
-                channels=int(config.dino_distill_channels),
-                object_weight=config.dino_distill_object_weight,
-                background_weight=config.dino_distill_background_weight,
-            ),
-        )
+        stage_a_name = f"{config.name}-stageA"
+        stage_a_dir = project_dir / stage_a_name
+        if stage_a_dir.exists():
+            shutil.rmtree(stage_a_dir)
+
         safe_warmup_epochs = float(config.warmup_epochs) if config.warmup_epochs is not None else 0.0
         safe_fliplr = float(config.fliplr) if config.fliplr is not None else 0.0
         safe_flipud = float(config.flipud) if config.flipud is not None else 0.0
@@ -447,9 +437,10 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             current_epoch = int(getattr(trainer, "epoch", -1)) + 1
             if current_epoch <= 0:
                 return
+            global_epoch = stage_a_epochs + current_epoch
 
             if config.wandb_log_every_epoch:
-                _log_step_payload(current_epoch, _extract_epoch_metrics(trainer))
+                _log_step_payload(global_epoch, _extract_epoch_metrics(trainer))
 
             if not config.eval_enabled:
                 return
@@ -457,7 +448,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                 return
 
             warmup_done = current_epoch >= int(max(1, round(config.warmup_epochs)))
-            should_eval = ((warmup_done and current_epoch % config.eval_interval_epochs == 0) or (current_epoch == config.epochs))
+            should_eval = ((warmup_done and global_epoch % config.eval_interval_epochs == 0) or (current_epoch == stage_b_epochs))
             if not should_eval:
                 return
 
@@ -466,7 +457,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                 eval_result = _run_periodic_eval(
                     config=config,
                     save_dir=save_dir_cb,
-                    epoch=current_epoch,
+                    epoch=global_epoch,
                     device=device,
                     run_name=config.name,
                     wandb_run=wandb_run,
@@ -481,7 +472,7 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                         best_geo_weights = save_dir_cb / "weights" / "best_geo.pt"
                         best_geo_weights.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(weights_last_path, best_geo_weights)
-                        _log_step_payload(current_epoch, {"eval/best_geo_score": best_geo_score})
+                        _log_step_payload(global_epoch, {"eval/best_geo_score": best_geo_score})
             except Exception as exc:
                 periodic_eval.append(
                     {
@@ -490,19 +481,16 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                         "error": str(exc),
                     }
                 )
-                _log_step_payload(current_epoch, {"eval/status": 0.0, "eval/error_flag": 1.0})
+                _log_step_payload(global_epoch, {"eval/status": 0.0, "eval/error_flag": 1.0})
 
             last_eval_epoch = current_epoch
 
-        model.add_callback("on_fit_epoch_end", _on_fit_epoch_end)
         train_kwargs: dict[str, Any] = {
             "data": str(data_yaml_path),
-            "epochs": config.epochs,
             "imgsz": config.imgsz,
             "batch": config.batch,
             "device": device,
             "project": str(project_dir),
-            "name": config.name,
             "seed": config.seed,
             "workers": config.workers,
             "patience": config.patience,
@@ -532,12 +520,76 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             "copy_paste": safe_copy_paste,
             "multi_scale": config.multi_scale,
         }
-        if config.freeze is not None:
-            train_kwargs["freeze"] = config.freeze
+        def _make_trainer_factory(distill_weight: float):
+            return partial(
+                DinoOBBTrainer,
+                dino_cfg=DinoDistillConfig(
+                    dino_root=config.dino_root,
+                    weight=float(distill_weight),
+                    warmup_epochs=config.dino_distill_warmup_epochs,
+                    student_layers=tuple(int(v) for v in config.dino_distill_layers),
+                    channels=int(config.dino_distill_channels),
+                    object_weight=config.dino_distill_object_weight,
+                    background_weight=config.dino_distill_background_weight,
+                ),
+            )
 
-        train_result = model.train(
-            trainer=trainer_factory,
-            **train_kwargs,
+        stage_a_epochs = 0
+        if config.epochs >= 2:
+            stage_a_epochs = int(round(config.epochs * config.stage_a_ratio))
+            stage_a_epochs = max(1, min(config.epochs - 1, stage_a_epochs))
+        stage_b_epochs = config.epochs - stage_a_epochs
+        if stage_b_epochs <= 0:
+            stage_b_epochs = 1
+            stage_a_epochs = max(0, config.epochs - 1)
+
+        stage_a_last: Path | None = None
+        if stage_a_epochs > 0:
+            model_a = YOLO(config.model)
+            model_task = str(getattr(model_a, "task", "")).strip().lower()
+            if model_task != "obb":
+                raise RuntimeError(
+                    f"model is not an OBB model (task={model_task!r}): {config.model}. "
+                    "Use an OBB checkpoint."
+                )
+            stage_a_kwargs = dict(train_kwargs)
+            stage_a_kwargs.update(
+                {
+                    "epochs": stage_a_epochs,
+                    "name": stage_a_name,
+                    "freeze": config.stage_a_freeze,
+                }
+            )
+            train_result_a = model_a.train(
+                trainer=_make_trainer_factory(config.stage_a_distill_weight),
+                **stage_a_kwargs,
+            )
+            save_dir_a = Path(getattr(train_result_a, "save_dir", stage_a_dir))
+            weights_dir_a = save_dir_a / "weights"
+            cand_last = weights_dir_a / "last.pt"
+            cand_best = weights_dir_a / "best.pt"
+            stage_a_last = cand_last if cand_last.exists() else cand_best
+            if stage_a_last is None or not stage_a_last.exists():
+                raise FileNotFoundError(f"missing stage A checkpoint under {weights_dir_a}")
+
+        model_b = YOLO(str(stage_a_last) if stage_a_last is not None else config.model)
+        model_task = str(getattr(model_b, "task", "")).strip().lower()
+        if model_task != "obb":
+            raise RuntimeError(
+                f"model is not an OBB model (task={model_task!r}): {config.model}. "
+                "Use an OBB checkpoint."
+            )
+        model_b.add_callback("on_fit_epoch_end", _on_fit_epoch_end)
+        stage_b_kwargs = dict(train_kwargs)
+        stage_b_kwargs.update(
+            {
+                "epochs": stage_b_epochs,
+                "name": config.name,
+            }
+        )
+        train_result = model_b.train(
+            trainer=_make_trainer_factory(config.stage_b_distill_weight),
+            **stage_b_kwargs,
         )
 
         save_dir = Path(getattr(train_result, "save_dir", project_dir / config.name))

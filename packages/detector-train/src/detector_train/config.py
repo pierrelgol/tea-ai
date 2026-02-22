@@ -57,6 +57,10 @@ class TrainConfig:
     dino_distill_channels: int = 32
     dino_distill_object_weight: float = 1.0
     dino_distill_background_weight: float = 0.2
+    stage_a_ratio: float = 0.30
+    stage_a_freeze: int = 10
+    stage_a_distill_weight: float = 0.25
+    stage_b_distill_weight: float = 0.08
 
     wandb_enabled: bool = True
     wandb_project: str = "tea-ai-detector"
@@ -121,6 +125,14 @@ class TrainConfig:
             raise ValueError("dino_distill_object_weight must be >= 0")
         if self.dino_distill_background_weight < 0:
             raise ValueError("dino_distill_background_weight must be >= 0")
+        if self.stage_a_ratio <= 0 or self.stage_a_ratio >= 1:
+            raise ValueError("stage_a_ratio must be in (0,1)")
+        if self.stage_a_freeze < 0:
+            raise ValueError("stage_a_freeze must be >= 0")
+        if self.stage_a_distill_weight < 0:
+            raise ValueError("stage_a_distill_weight must be >= 0")
+        if self.stage_b_distill_weight < 0:
+            raise ValueError("stage_b_distill_weight must be >= 0")
         if self.wandb_mode not in {"online", "offline", "auto"}:
             raise ValueError("wandb_mode must be one of: online, offline, auto")
         if self.eval_interval_epochs < 1:

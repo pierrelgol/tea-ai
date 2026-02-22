@@ -4,9 +4,11 @@ import types
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from ultralytics.models.yolo.obb.train import OBBTrainer
+from ultralytics.utils import ops
 from ultralytics.utils.torch_utils import unwrap_model
 
 from dinov3_bridge import DinoV3Teacher, resolve_local_dinov3_root
@@ -91,22 +93,47 @@ class DinoOBBTrainer(OBBTrainer):
             boxes = batch["bboxes"].to(device=device, dtype=torch.float32)
             if boxes.numel() == 0:
                 return mask
+            boxes_px = boxes.clone()
+            boxes_px[:, 0] = boxes_px[:, 0].clamp(0.0, 1.0) * w
+            boxes_px[:, 1] = boxes_px[:, 1].clamp(0.0, 1.0) * h
+            boxes_px[:, 2] = boxes_px[:, 2].clamp(0.0, 1.0) * w
+            boxes_px[:, 3] = boxes_px[:, 3].clamp(0.0, 1.0) * h
+            polys = ops.xywhr2xyxyxyxy(boxes_px).detach().cpu().numpy()
 
-            cx = boxes[:, 0].clamp(0.0, 1.0)
-            cy = boxes[:, 1].clamp(0.0, 1.0)
-            bw = boxes[:, 2].clamp(0.0, 1.0)
-            bh = boxes[:, 3].clamp(0.0, 1.0)
-            x1 = ((cx - bw * 0.5) * w).floor().to(torch.long).clamp(0, max(0, w - 1))
-            x2 = ((cx + bw * 0.5) * w).ceil().to(torch.long).clamp(1, w)
-            y1 = ((cy - bh * 0.5) * h).floor().to(torch.long).clamp(0, max(0, h - 1))
-            y2 = ((cy + bh * 0.5) * h).ceil().to(torch.long).clamp(1, h)
+            try:
+                import cv2  # type: ignore
 
-            for i in range(int(boxes.shape[0])):
-                bi = int(batch_idx[i].item())
-                xa, xb = int(x1[i].item()), int(x2[i].item())
-                ya, yb = int(y1[i].item()), int(y2[i].item())
-                if xa < xb and ya < yb and 0 <= bi < mask.shape[0]:
-                    mask[bi, 0, ya:yb, xa:xb] = 1.0
+                for bi in range(mask.shape[0]):
+                    idxs = (batch_idx == bi).nonzero(as_tuple=False).view(-1).detach().cpu().numpy()
+                    if idxs.size == 0:
+                        continue
+                    canvas = np.zeros((h, w), dtype=np.uint8)
+                    pts: list[np.ndarray] = []
+                    for i in idxs.tolist():
+                        poly = np.round(polys[i]).astype(np.int32).reshape(-1, 2)
+                        poly[:, 0] = np.clip(poly[:, 0], 0, max(0, w - 1))
+                        poly[:, 1] = np.clip(poly[:, 1], 0, max(0, h - 1))
+                        if poly.shape[0] == 4:
+                            pts.append(poly)
+                    if pts:
+                        cv2.fillPoly(canvas, pts, color=1)
+                        mask[bi, 0] = torch.from_numpy(canvas).to(device=device, dtype=mask.dtype)
+            except Exception:
+                # Fallback to axis-aligned region when polygon rasterization is unavailable.
+                cx = boxes[:, 0].clamp(0.0, 1.0)
+                cy = boxes[:, 1].clamp(0.0, 1.0)
+                bw = boxes[:, 2].clamp(0.0, 1.0)
+                bh = boxes[:, 3].clamp(0.0, 1.0)
+                x1 = ((cx - bw * 0.5) * w).floor().to(torch.long).clamp(0, max(0, w - 1))
+                x2 = ((cx + bw * 0.5) * w).ceil().to(torch.long).clamp(1, w)
+                y1 = ((cy - bh * 0.5) * h).floor().to(torch.long).clamp(0, max(0, h - 1))
+                y2 = ((cy + bh * 0.5) * h).ceil().to(torch.long).clamp(1, h)
+                for i in range(int(boxes.shape[0])):
+                    bi = int(batch_idx[i].item())
+                    xa, xb = int(x1[i].item()), int(x2[i].item())
+                    ya, yb = int(y1[i].item()), int(y2[i].item())
+                    if xa < xb and ya < yb and 0 <= bi < mask.shape[0]:
+                        mask[bi, 0, ya:yb, xa:xb] = 1.0
             return mask
 
         def _compute_distill_loss(batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

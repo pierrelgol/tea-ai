@@ -1,11 +1,13 @@
 # dataset-fetcher
 
-Fetches COCO8 from Ultralytics into a top-level `dataset/` directory.
+Fetches datasets into a top-level `dataset/` directory using versioned profile configs.
 
 ## Usage
 
 ```bash
-uv run dataset-fetcher
+uv run dataset-fetcher --dataset coco8
 ```
 
-By default, this creates `./dataset/coco8`. If that directory already exists and is non-empty, the command skips re-downloading.
+Built-in profiles live in `configs/datasets/*.json` (e.g. `coco8`, `coco128`, `coco17`).
+
+By default, this creates/validates `./dataset/<dataset_name>`.

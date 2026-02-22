@@ -48,7 +48,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
         target_classes_file=config.target_classes_file,
     )
     target_classes = load_target_classes(config.target_classes_file)
-    backgrounds_by_split = load_backgrounds_by_split(config.background_root)
+    backgrounds_by_split = load_backgrounds_by_split(config.background_splits)
 
     _ensure_output_layout(config.output_root)
     write_augmented_classes(config.output_root, target_classes, config.class_offset_base)
@@ -81,13 +81,17 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                 if target_image is None:
                     continue
 
-                hs = sample_valid_homography(
-                    canonical_corners_px=target.canonical_corners_px,
-                    background_w=bg_w,
-                    background_h=bg_h,
-                    rng=rng,
-                    params=homography_params,
-                )
+                try:
+                    hs = sample_valid_homography(
+                        canonical_corners_px=target.canonical_corners_px,
+                        background_w=bg_w,
+                        background_h=bg_h,
+                        rng=rng,
+                        params=homography_params,
+                    )
+                except RuntimeError:
+                    # Skip unsatisfiable target/background placements instead of aborting the full generation run.
+                    continue
 
                 projected_corners = apply_homography_to_points(hs.H, target.canonical_corners_px)
                 projected_corners_norm = corners_px_to_yolo_obb(projected_corners, bg_w, bg_h)
@@ -114,6 +118,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
 
                 metadata = {
                     "seed": config.seed,
+                    "background_dataset_name": config.background_dataset_name,
                     "background_image": str(bg_path),
                     "target_image": str(target.image_path),
                     "target_class_name": target.class_name,

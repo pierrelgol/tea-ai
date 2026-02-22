@@ -91,10 +91,10 @@ def load_canonical_targets(
     return targets
 
 
-def load_backgrounds_by_split(background_root: Path) -> dict[str, list[Path]]:
+def load_backgrounds_by_split(split_dirs: dict[str, Path]) -> dict[str, list[Path]]:
     out: dict[str, list[Path]] = {}
     for split in ("train", "val"):
-        split_dir = background_root / "images" / split
+        split_dir = split_dirs[split]
         if not split_dir.exists():
             out[split] = []
             continue

@@ -10,7 +10,9 @@ from .trainer import train_detector
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train detector model (OBB) and track run artifacts")
-    parser.add_argument("--dataset-root", type=Path, default=Path("dataset/augmented"))
+    parser.add_argument("--dataset", default="coco8", help="Dataset name under --datasets-base-root")
+    parser.add_argument("--datasets-base-root", type=Path, default=Path("dataset/augmented"))
+    parser.add_argument("--dataset-root", type=Path, default=None, help="Explicit dataset root override")
     parser.add_argument("--artifacts-root", type=Path, default=Path("artifacts/detector-train"))
     parser.add_argument("--model", default="yolo11n-obb.pt")
     parser.add_argument("--epochs", type=int, default=50)
@@ -39,11 +41,12 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    dataset_root = args.dataset_root if args.dataset_root is not None else args.datasets_base_root / args.dataset
     run_name = args.name or datetime.utcnow().strftime("run-%Y%m%d-%H%M%S")
     tags = [t.strip() for t in args.wandb_tags.split(",") if t.strip()]
 
     config = TrainConfig(
-        dataset_root=args.dataset_root,
+        dataset_root=dataset_root,
         artifacts_root=args.artifacts_root,
         model=args.model,
         epochs=args.epochs,

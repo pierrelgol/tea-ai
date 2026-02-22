@@ -13,5 +13,5 @@ GUI + report checker for synthetic augmentation quality.
 ## Run
 
 ```bash
-uv run augment-checker --dataset-root dataset/augmented --reports-dir dataset/augmented/reports
+uv run augment-checker --dataset coco8 --datasets-base-root dataset/augmented
 ```

@@ -14,8 +14,10 @@ from .reports import write_reports
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Check augmented dataset integrity and geometry")
-    parser.add_argument("--dataset-root", type=Path, default=Path("dataset/augmented"))
-    parser.add_argument("--reports-dir", type=Path, default=Path("dataset/augmented/reports"))
+    parser.add_argument("--dataset", default="coco8", help="Dataset name under --datasets-base-root")
+    parser.add_argument("--datasets-base-root", type=Path, default=Path("dataset/augmented"))
+    parser.add_argument("--dataset-root", type=Path, default=None, help="Explicit dataset root override")
+    parser.add_argument("--reports-dir", type=Path, default=None, help="Defaults to <dataset-root>/reports")
     parser.add_argument("--outlier-threshold-px", type=float, default=2.0)
     parser.add_argument("--debug-overlays-per-split", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
@@ -23,20 +25,23 @@ def main() -> None:
     parser.add_argument("--no-gui", action="store_true")
     args = parser.parse_args()
 
-    records = index_dataset(args.dataset_root)
+    dataset_root = args.dataset_root if args.dataset_root is not None else args.datasets_base_root / args.dataset
+    reports_dir = args.reports_dir if args.reports_dir is not None else dataset_root / "reports"
+
+    records = index_dataset(dataset_root)
     integrity_issues, integrity_summary = run_integrity_checks(records)
     geometry_metrics, geometry_summary = run_geometry_checks(records, args.outlier_threshold_px)
     model_reports = run_prediction_checks(records, args.predictions_root)
 
     export_debug_overlays(
         records=records,
-        reports_dir=args.reports_dir,
+        reports_dir=reports_dir,
         n_per_split=args.debug_overlays_per_split,
         seed=args.seed,
     )
 
     write_reports(
-        reports_dir=args.reports_dir,
+        reports_dir=reports_dir,
         integrity_issues=integrity_issues,
         integrity_summary=integrity_summary,
         geometry_metrics=geometry_metrics,

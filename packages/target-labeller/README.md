@@ -5,13 +5,20 @@ Simple Qt GUI tool to label one bounding box per image and export YOLO format.
 ## Defaults
 
 - Images: `targets/`
-- Labels: `dataset/targets/labels/`
-- Class map: `dataset/targets/classes.txt`
+- Export root: `dataset/targets/`
+- Labels: `<export-root>/labels/`
+- Class map: `<export-root>/classes.txt`
 
 ## Run
 
 ```bash
 uv run target-labeller
+```
+
+Or select a different targets location:
+
+```bash
+uv run target-labeller --dataset-root dataset --targets-subdir targets
 ```
 
 ## Controls
@@ -21,6 +28,6 @@ uv run target-labeller
 - `Left` / `A`: previous image
 - `Right` / `D`: next image
 - `Finish`: exports labeled samples to:
-  - `dataset/targets/images/<class_name>.<ext>` (or `<class_name>_2`, `_3`, ...)
-  - `dataset/targets/labels/<class_name>.txt` (same stem as image)
+  - `<export-root>/images/<class_name>.<ext>` (or `<class_name>_2`, `_3`, ...)
+  - `<export-root>/labels/<class_name>.txt` (same stem as image)
   then closes the tool.

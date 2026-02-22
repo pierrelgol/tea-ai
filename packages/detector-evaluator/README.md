@@ -17,7 +17,7 @@ Pure evaluation package for synthetic/real detection datasets.
 
 ```bash
 uv run detector-evaluator \
-  --dataset-root dataset/augmented \
-  --predictions-root predictions \
-  --reports-dir dataset/augmented/eval_reports
+  --dataset coco8 \
+  --datasets-base-root dataset/augmented \
+  --predictions-root predictions
 ```

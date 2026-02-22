@@ -10,7 +10,9 @@ from .infer import run_inference
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run detector inference and export YOLO predictions")
     parser.add_argument("--weights", type=Path, required=True)
-    parser.add_argument("--dataset-root", type=Path, default=Path("dataset/augmented"))
+    parser.add_argument("--dataset", default="coco8", help="Dataset name under --datasets-base-root")
+    parser.add_argument("--datasets-base-root", type=Path, default=Path("dataset/augmented"))
+    parser.add_argument("--dataset-root", type=Path, default=None, help="Explicit dataset root override")
     parser.add_argument("--output-root", type=Path, default=Path("predictions"))
     parser.add_argument("--model-name", required=True)
     parser.add_argument("--imgsz", type=int, default=640)
@@ -23,10 +25,11 @@ def main() -> None:
     args = parser.parse_args()
 
     splits = [s.strip() for s in args.splits.split(",") if s.strip()]
+    dataset_root = args.dataset_root if args.dataset_root is not None else args.datasets_base_root / args.dataset
 
     cfg = InferConfig(
         weights=args.weights,
-        dataset_root=args.dataset_root,
+        dataset_root=dataset_root,
         output_root=args.output_root,
         model_name=args.model_name,
         imgsz=args.imgsz,

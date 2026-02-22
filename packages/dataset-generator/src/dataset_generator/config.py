@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path
 
 
 @dataclass(slots=True)
 class GeneratorConfig:
-    background_root: Path = Path("dataset/coco8")
-    target_images_dir: Path = Path("dataset/targets/images")
-    target_labels_dir: Path = Path("dataset/targets/labels")
-    target_classes_file: Path = Path("dataset/targets/classes.txt")
-    output_root: Path = Path("dataset/augmented")
+    background_splits: dict[str, Path] = field(
+        default_factory=lambda: {
+            "train": Path("backgrounds/train"),
+            "val": Path("backgrounds/val"),
+        }
+    )
+    background_dataset_name: str = "default"
+    target_images_dir: Path = Path("targets/images")
+    target_labels_dir: Path = Path("targets/labels")
+    target_classes_file: Path = Path("targets/classes.txt")
+    output_root: Path = Path("augmented/default")
 
     samples_per_background: int = 1
     seed: int | None = None
@@ -41,3 +48,8 @@ class GeneratorConfig:
             raise ValueError("max_attempts must be >= 1")
         if self.class_offset_base < 0:
             raise ValueError("class_offset_base must be >= 0")
+        if "train" not in self.background_splits or "val" not in self.background_splits:
+            raise ValueError("background_splits must define train and val paths")
+        for split, path in self.background_splits.items():
+            if not path.exists():
+                raise FileNotFoundError(f"background split path does not exist ({split}): {path}")

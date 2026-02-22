@@ -30,12 +30,14 @@ class LabelerWindow(QMainWindow):
         images_dir: Path,
         labels_dir: Path,
         classes_file: Path,
+        export_root: Path,
         exts: list[str],
     ) -> None:
         super().__init__()
         self.images_dir = images_dir
         self.labels_dir = labels_dir
         self.classes_file = classes_file
+        self.export_root = export_root
         self.images = discover_images(images_dir, exts)
         self.index = 0
 
@@ -188,17 +190,16 @@ class LabelerWindow(QMainWindow):
             "Finished",
             (
                 f"Exported {exported_count} labeled image(s) to:\n"
-                "dataset/targets/images\n"
-                "dataset/targets/labels"
+                f"{self.export_root / 'images'}\n"
+                f"{self.export_root / 'labels'}"
             ),
         )
         self.close()
 
     def _export_targets_structure(self) -> int:
-        export_base_dir = Path("dataset/targets")
-        export_images_dir = export_base_dir / "images"
-        export_labels_dir = export_base_dir / "labels"
-        legacy_labels_dir = export_base_dir / "lables"
+        export_images_dir = self.export_root / "images"
+        export_labels_dir = self.export_root / "labels"
+        legacy_labels_dir = self.export_root / "lables"
         export_images_dir.mkdir(parents=True, exist_ok=True)
         export_labels_dir.mkdir(parents=True, exist_ok=True)
         if legacy_labels_dir.exists():
@@ -300,12 +301,13 @@ class LabelerWindow(QMainWindow):
         return stem
 
 
-def run_app(images_dir: Path, labels_dir: Path, classes_file: Path, exts: list[str]) -> None:
+def run_app(images_dir: Path, labels_dir: Path, classes_file: Path, export_root: Path, exts: list[str]) -> None:
     app = QApplication(sys.argv)
     window = LabelerWindow(
         images_dir=images_dir,
         labels_dir=labels_dir,
         classes_file=classes_file,
+        export_root=export_root,
         exts=exts,
     )
     window.show()

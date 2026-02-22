@@ -5,15 +5,19 @@ from pathlib import Path
 
 from .config import GeneratorConfig
 from .generator import generate_dataset
+from .profiles import resolve_profile, resolve_split_dirs
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate synthetic augmented dataset from coco8 and targets")
-    parser.add_argument("--background-root", default="dataset/coco8")
-    parser.add_argument("--target-images-dir", default="dataset/targets/images")
-    parser.add_argument("--target-labels-dir", default="dataset/targets/labels")
-    parser.add_argument("--target-classes-file", default="dataset/targets/classes.txt")
-    parser.add_argument("--output-root", default="dataset/augmented")
+    parser = argparse.ArgumentParser(description="Generate synthetic augmented dataset from selected background dataset")
+    parser.add_argument("--dataset", default="coco8", help="Dataset profile name (default: coco8)")
+    parser.add_argument("--dataset-root", default="dataset", help="Top-level datasets directory (default: dataset)")
+    parser.add_argument("--profile", type=Path, default=None, help="Explicit dataset profile JSON path")
+    parser.add_argument("--background-root", default=None, help="Manual background dataset root override")
+    parser.add_argument("--target-images-dir", default=None, help="Defaults to <dataset-root>/targets/images")
+    parser.add_argument("--target-labels-dir", default=None, help="Defaults to <dataset-root>/targets/labels")
+    parser.add_argument("--target-classes-file", default=None, help="Defaults to <dataset-root>/targets/classes.txt")
+    parser.add_argument("--output-root", default=None, help="Augmented output root (default: dataset/augmented/<dataset>)")
     parser.add_argument("--samples-per-background", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
 
@@ -27,12 +31,32 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    dataset_root = Path(args.dataset_root)
+    if args.background_root:
+        dataset_name = args.dataset
+        background_splits = {
+            "train": Path(args.background_root) / "images" / "train",
+            "val": Path(args.background_root) / "images" / "val",
+        }
+    else:
+        profile, _profile_path = resolve_profile(dataset_name=args.dataset, profile_path=args.profile)
+        dataset_name = profile.name
+        background_splits = resolve_split_dirs(dataset_root=dataset_root, profile=profile)
+
+    output_root = Path(args.output_root) if args.output_root else dataset_root / "augmented" / dataset_name
+    target_images_dir = Path(args.target_images_dir) if args.target_images_dir else dataset_root / "targets" / "images"
+    target_labels_dir = Path(args.target_labels_dir) if args.target_labels_dir else dataset_root / "targets" / "labels"
+    target_classes_file = (
+        Path(args.target_classes_file) if args.target_classes_file else dataset_root / "targets" / "classes.txt"
+    )
+
     config = GeneratorConfig(
-        background_root=Path(args.background_root),
-        target_images_dir=Path(args.target_images_dir),
-        target_labels_dir=Path(args.target_labels_dir),
-        target_classes_file=Path(args.target_classes_file),
-        output_root=Path(args.output_root),
+        background_splits=background_splits,
+        background_dataset_name=dataset_name,
+        target_images_dir=target_images_dir,
+        target_labels_dir=target_labels_dir,
+        target_classes_file=target_classes_file,
+        output_root=output_root,
         samples_per_background=args.samples_per_background,
         seed=args.seed,
         scale_min=args.scale_min,

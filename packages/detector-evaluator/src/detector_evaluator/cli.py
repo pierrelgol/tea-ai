@@ -8,9 +8,11 @@ from .evaluator import evaluate_models
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate detector predictions against YOLO GT with stability and geometry metrics")
-    parser.add_argument("--dataset-root", type=Path, default=Path("dataset/augmented"))
+    parser.add_argument("--dataset", default="coco8", help="Dataset name under --datasets-base-root")
+    parser.add_argument("--datasets-base-root", type=Path, default=Path("dataset/augmented"))
+    parser.add_argument("--dataset-root", type=Path, default=None, help="Explicit dataset root override")
     parser.add_argument("--predictions-root", type=Path, default=None)
-    parser.add_argument("--reports-dir", type=Path, default=Path("dataset/augmented/eval_reports"))
+    parser.add_argument("--reports-dir", type=Path, default=None, help="Defaults to <dataset-root>/eval_reports")
     parser.add_argument("--iou-threshold", type=float, default=0.5)
     parser.add_argument("--conf-threshold", type=float, default=0.25)
     parser.add_argument("--seed", type=int, default=42)
@@ -19,13 +21,15 @@ def main() -> None:
     parser.add_argument("--models", type=str, default=None, help="Comma-separated model names filter")
     args = parser.parse_args()
 
+    dataset_root = args.dataset_root if args.dataset_root is not None else args.datasets_base_root / args.dataset
+    reports_dir = args.reports_dir if args.reports_dir is not None else dataset_root / "eval_reports"
     models_filter = [x.strip() for x in args.models.split(",")] if args.models else None
     viz_samples = 0 if args.no_viz else args.viz_samples
 
     result = evaluate_models(
-        dataset_root=args.dataset_root,
+        dataset_root=dataset_root,
         predictions_root=args.predictions_root,
-        reports_dir=args.reports_dir,
+        reports_dir=reports_dir,
         iou_threshold=args.iou_threshold,
         conf_threshold=args.conf_threshold,
         seed=args.seed,

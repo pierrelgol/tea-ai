@@ -25,7 +25,7 @@ def write_data_yaml(dataset_root: Path, output_path: Path) -> tuple[Path, list[s
     names = load_class_names(classes_file)
 
     payload = {
-        "path": str(dataset_root.resolve()),
+        "path": str(dataset_root),
         "train": "images/train",
         "val": "images/val",
         "nc": len(names),

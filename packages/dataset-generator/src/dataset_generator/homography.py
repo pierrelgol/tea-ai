@@ -40,15 +40,29 @@ def sample_valid_homography(
 
     bg_area = background_w * background_h
     min_area = params.min_quad_area_frac * bg_area
+    jitter_factor = 1.0 + 2.0 * float(max(params.perspective_jitter, 0.0))
+    max_fit_scale = min(background_w / (src_w * jitter_factor), background_h / (src_h * jitter_factor))
+    scale_upper = min(params.scale_max, max_fit_scale * 0.95)
+    if scale_upper <= 0:
+        raise RuntimeError("No feasible scale for current target/background geometry")
+    scale_lower = min(params.scale_min, scale_upper)
 
     for _ in range(params.max_attempts):
-        scale = float(rng.uniform(params.scale_min, params.scale_max))
+        scale = float(rng.uniform(scale_lower, scale_upper))
 
         rect_w = src_w * scale
         rect_h = src_h * scale
 
-        cx = background_w * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_w
-        cy = background_h * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_h
+        jitter_mag = params.perspective_jitter * max(rect_w, rect_h)
+        margin_x = rect_w / 2.0 + jitter_mag
+        margin_y = rect_h / 2.0 + jitter_mag
+        if margin_x >= background_w or margin_y >= background_h:
+            continue
+
+        cx0 = background_w * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_w
+        cy0 = background_h * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_h
+        cx = float(np.clip(cx0, margin_x, background_w - margin_x))
+        cy = float(np.clip(cy0, margin_y, background_h - margin_y))
 
         base_rect = np.array(
             [
@@ -60,7 +74,6 @@ def sample_valid_homography(
             dtype=np.float32,
         )
 
-        jitter_mag = params.perspective_jitter * max(rect_w, rect_h)
         jitter = rng.uniform(-jitter_mag, jitter_mag, size=(4, 2)).astype(np.float32)
         dst_quad = base_rect + jitter
 

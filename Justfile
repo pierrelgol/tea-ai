@@ -1,4 +1,5 @@
 set shell := ["bash", "-cu"]
+dataset := "coco128"
 
 default:
     @just --list
@@ -38,30 +39,28 @@ fclean: clean
 
 fetch-dataset: venv
     @uv sync --all-packages
-    @if [[ ! -d dataset/coco8 ]] || [[ -z "$(ls -A dataset/coco8 2>/dev/null)" ]]; then \
-      uv run dataset-fetcher --dataset-root dataset; \
-    fi
+    @uv run dataset-fetcher --dataset {{dataset}} --dataset-root dataset
 
-label-targets: venv
+label-targets DATASET_ROOT='dataset' TARGETS_SUBDIR='targets': venv
     @uv sync --all-packages
-    @uv run target-labeller --images-dir targets --labels-dir dataset/targets/labels --classes-file dataset/targets/classes.txt
+    @uv run target-labeller --dataset-root {{DATASET_ROOT}} --targets-subdir {{TARGETS_SUBDIR}} --images-dir targets
 
 generate-augmented: venv
     @uv sync --all-packages
-    @uv run dataset-generator --output-root dataset/augmented
+    @uv run dataset-generator --dataset {{dataset}} --dataset-root dataset
 
 check-augmented: venv
     @uv sync --all-packages
-    @uv run augment-checker --dataset-root dataset/augmented --reports-dir dataset/augmented/reports
+    @uv run augment-checker --dataset {{dataset}} --datasets-base-root dataset/augmented
 
 evaluate-detector: venv
     @uv sync --all-packages
-    @uv run detector-evaluator --dataset-root dataset/augmented --predictions-root predictions --reports-dir dataset/augmented/eval_reports
+    @uv run detector-evaluator --dataset {{dataset}} --datasets-base-root dataset/augmented --predictions-root predictions
 
 train-detector: venv
     @uv sync --all-packages
-    @uv run detector-train --dataset-root dataset/augmented --artifacts-root artifacts/detector-train
+    @uv run detector-train --dataset {{dataset}} --datasets-base-root dataset/augmented --artifacts-root artifacts/detector-train
 
 infer-detector WEIGHTS MODEL: venv
     @uv sync --all-packages
-    @uv run detector-infer --weights {{WEIGHTS}} --model-name {{MODEL}} --dataset-root dataset/augmented --output-root predictions
+    @uv run detector-infer --weights {{WEIGHTS}} --model-name {{MODEL}} --dataset {{dataset}} --datasets-base-root dataset/augmented --output-root predictions

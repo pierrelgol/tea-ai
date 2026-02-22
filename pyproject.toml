@@ -1,0 +1,15 @@
+[project]
+name = "tea-ai"
+version = "0.1.0"
+description = "Composable AI pipeline workspace"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "dataset-generator",
+]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+dataset-generator = { workspace = true }

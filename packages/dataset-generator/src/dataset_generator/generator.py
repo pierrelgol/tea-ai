@@ -194,6 +194,56 @@ def _load_hard_class_boosts(path: Path | None) -> dict[int, float]:
     return out
 
 
+def _resolve_curriculum_context(config: GeneratorConfig) -> dict[str, Any]:
+    if not config.curriculum_enabled:
+        return {
+            "stage": "off",
+            "orientation_within_10deg_rate": None,
+            "report_path": None,
+            "perspective_mult": 1.0,
+            "occlusion_mult": 1.0,
+        }
+
+    stage = "mild"
+    orientation_rate = None
+    report_path = None
+    perspective_mult = 0.7
+    occlusion_mult = 0.75
+    reports_dir = config.output_root / "grade_reports"
+    candidates = sorted(reports_dir.glob("grade_report_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if candidates:
+        report_path = candidates[0]
+        try:
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+            vals: list[float] = []
+            for split in payload.get("aggregate", {}).get("splits", []):
+                value = split.get("geometry", {}).get("orientation_within_10deg_rate")
+                if value is not None:
+                    vals.append(float(value))
+            if vals:
+                orientation_rate = float(sum(vals) / len(vals))
+        except Exception:
+            orientation_rate = None
+
+    if orientation_rate is not None:
+        if orientation_rate >= config.curriculum_orientation_metric_threshold_hard:
+            stage = "hard"
+            perspective_mult = 1.2
+            occlusion_mult = 1.15
+        elif orientation_rate >= config.curriculum_orientation_metric_threshold_medium:
+            stage = "medium"
+            perspective_mult = 1.0
+            occlusion_mult = 1.0
+
+    return {
+        "stage": stage,
+        "orientation_within_10deg_rate": orientation_rate,
+        "report_path": str(report_path) if report_path is not None else None,
+        "perspective_mult": perspective_mult,
+        "occlusion_mult": occlusion_mult,
+    }
+
+
 def _try_place_target(
     *,
     background: np.ndarray,
@@ -201,6 +251,7 @@ def _try_place_target(
     target_image: np.ndarray,
     occupancy_mask: np.ndarray,
     homography_params: HomographyParams,
+    max_occlusion_ratio: float,
     rng: np.random.Generator,
     config: GeneratorConfig,
 ) -> PlacedTarget | None:
@@ -232,7 +283,7 @@ def _try_place_target(
     )
     ratio_visible = visible_ratio(warped_mask=warped_mask, occupancy_mask=occupancy_mask)
     occlusion_ratio = 1.0 - ratio_visible
-    if (not config.allow_partial_visibility and ratio_visible < 0.999) or occlusion_ratio > config.max_occlusion_ratio:
+    if (not config.allow_partial_visibility and ratio_visible < 0.999) or occlusion_ratio > max_occlusion_ratio:
         return None
 
     class_id_exported = config.class_offset_base + target.class_id_local
@@ -273,6 +324,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
         target_classes_file=config.target_classes_file,
     )
     target_classes = load_target_classes(config.target_classes_file)
+    curriculum = _resolve_curriculum_context(config)
     target_indices_by_class: dict[int, list[int]] = {}
     for idx, target in enumerate(targets):
         target_indices_by_class.setdefault(int(target.class_id_local), []).append(idx)
@@ -323,12 +375,13 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
         scale_min=config.scale_min,
         scale_max=config.scale_max,
         translate_frac=config.translate_frac,
-        perspective_jitter=config.perspective_jitter,
+        perspective_jitter=config.perspective_jitter * float(curriculum["perspective_mult"]),
         min_quad_area_frac=config.min_quad_area_frac,
         max_attempts=config.max_attempts,
         edge_bias_prob=config.edge_bias_prob,
         edge_band_frac=config.edge_band_frac,
     )
+    effective_max_occlusion = float(np.clip(config.max_occlusion_ratio * float(curriculum["occlusion_mult"]), 0.0, 0.95))
     rng = np.random.default_rng(config.seed)
     angle_bin_counts = np.zeros(12, dtype=np.int32)
     results: list[SampleResult] = []
@@ -382,6 +435,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                             target_image=target_image,
                             occupancy_mask=occupancy_mask,
                             homography_params=sample_homography_params,
+                            max_occlusion_ratio=effective_max_occlusion,
                             rng=rng,
                             config=config,
                         )
@@ -442,6 +496,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                     "seed": config.seed,
                     "generator_version": config.generator_version,
                     "background_dataset_name": config.background_dataset_name,
+                    "curriculum": curriculum,
                     "background_image": str(bg_path),
                     "num_targets": len(placed),
                     "planned_empty": planned_empty,

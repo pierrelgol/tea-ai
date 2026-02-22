@@ -20,6 +20,9 @@ class GeneratorConfig:
     output_root: Path = Path("augmented/default")
     hard_examples_path: Path | None = Path("artifacts/detector-train/hard_examples/latest.jsonl")
     hard_example_boost: float = 1.5
+    curriculum_enabled: bool = True
+    curriculum_orientation_metric_threshold_medium: float = 0.70
+    curriculum_orientation_metric_threshold_hard: float = 0.85
 
     samples_per_background: int = 1
     seed: int | None = None
@@ -72,6 +75,12 @@ class GeneratorConfig:
             raise ValueError("samples_per_background must be >= 1")
         if self.hard_example_boost < 0:
             raise ValueError("hard_example_boost must be >= 0")
+        if self.curriculum_orientation_metric_threshold_medium < 0 or self.curriculum_orientation_metric_threshold_medium > 1:
+            raise ValueError("curriculum medium threshold must be in [0,1]")
+        if self.curriculum_orientation_metric_threshold_hard < 0 or self.curriculum_orientation_metric_threshold_hard > 1:
+            raise ValueError("curriculum hard threshold must be in [0,1]")
+        if self.curriculum_orientation_metric_threshold_hard < self.curriculum_orientation_metric_threshold_medium:
+            raise ValueError("curriculum hard threshold must be >= medium threshold")
         if self.scale_min <= 0 or self.scale_max <= 0:
             raise ValueError("scale bounds must be > 0")
         if self.scale_min > self.scale_max:

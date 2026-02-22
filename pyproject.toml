@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "dataset-generator",
+  "dataset-fetcher",
 ]
 
 [tool.uv.workspace]
@@ -13,3 +14,4 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 dataset-generator = { workspace = true }
+dataset-fetcher = { workspace = true }

@@ -1,0 +1,35 @@
+version = 1
+revision = 3
+requires-python = ">=3.12"
+
+[manifest]
+members = [
+    "dataset-fetcher",
+    "dataset-generator",
+    "tea-ai",
+]
+
+[[package]]
+name = "dataset-fetcher"
+version = "0.1.0"
+source = { editable = "packages/dataset-fetcher" }
+
+[[package]]
+name = "dataset-generator"
+version = "0.1.0"
+source = { editable = "packages/dataset-generator" }
+
+[[package]]
+name = "tea-ai"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "dataset-fetcher" },
+    { name = "dataset-generator" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dataset-fetcher", editable = "packages/dataset-fetcher" },
+    { name = "dataset-generator", editable = "packages/dataset-generator" },
+]

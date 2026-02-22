@@ -18,6 +18,8 @@ class GeneratorConfig:
     target_labels_dir: Path = Path("targets/labels")
     target_classes_file: Path = Path("targets/classes.txt")
     output_root: Path = Path("augmented/default")
+    hard_examples_path: Path | None = Path("artifacts/detector-train/hard_examples/latest.jsonl")
+    hard_example_boost: float = 1.5
 
     samples_per_background: int = 1
     seed: int | None = None
@@ -68,6 +70,8 @@ class GeneratorConfig:
     def validate(self) -> None:
         if self.samples_per_background < 1:
             raise ValueError("samples_per_background must be >= 1")
+        if self.hard_example_boost < 0:
+            raise ValueError("hard_example_boost must be >= 0")
         if self.scale_min <= 0 or self.scale_max <= 0:
             raise ValueError("scale bounds must be > 0")
         if self.scale_min > self.scale_max:

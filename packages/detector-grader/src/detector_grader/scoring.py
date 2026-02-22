@@ -396,6 +396,15 @@ def score_sample(
         "components_mean": comp_mean,
         "diagnostics": diagnostics,
         "num_class_mismatch": int(sum(1 for d in diags if d.class_match == 0)),
+        "gt_class_ids": [int(g.class_id) for g in gt_labels],
+        "pred_class_ids": [int(p.class_id) for p in pred_labels],
+        "hard_class_ids": sorted(
+            {
+                int(gt_labels[m.gt_idx].class_id)
+                for m, d in zip(matches, diags)
+                if int(d.class_match) == 0
+            }
+        ),
         "match_coverage_gt": float(len(matches) / max(1, len(gt_labels))),
         "match_coverage_pred": float(len(matches) / max(1, len(pred_labels))),
         "has_gt": bool(len(gt_labels) > 0),

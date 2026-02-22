@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import shutil
 from typing import Any
@@ -170,6 +171,29 @@ def _fit_rectangular_obb(projected_quad: np.ndarray) -> np.ndarray:
     return _canonicalize_quad_cw_start_tl(corners)
 
 
+def _load_hard_class_boosts(path: Path | None) -> dict[int, float]:
+    if path is None or not path.exists():
+        return {}
+    out: dict[int, float] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except Exception:
+            continue
+        ids = list(row.get("hard_class_ids") or [])
+        if not ids:
+            ids.extend(row.get("gt_class_ids") or [])
+        for raw in ids:
+            try:
+                cid = int(raw)
+            except Exception:
+                continue
+            out[cid] = out.get(cid, 0.0) + 1.0
+    return out
+
+
 def _try_place_target(
     *,
     background: np.ndarray,
@@ -249,6 +273,19 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
         target_classes_file=config.target_classes_file,
     )
     target_classes = load_target_classes(config.target_classes_file)
+    target_indices_by_class: dict[int, list[int]] = {}
+    for idx, target in enumerate(targets):
+        target_indices_by_class.setdefault(int(target.class_id_local), []).append(idx)
+    hard_boost_raw = _load_hard_class_boosts(config.hard_examples_path)
+    class_ids = sorted(target_indices_by_class.keys())
+    class_weights = np.ones((len(class_ids),), dtype=np.float64)
+    if class_ids:
+        max_boost = max([hard_boost_raw.get(cid, 0.0) for cid in class_ids], default=0.0)
+        for i, cid in enumerate(class_ids):
+            rel = 0.0 if max_boost <= 0 else (hard_boost_raw.get(cid, 0.0) / max_boost)
+            class_weights[i] = 1.0 + float(config.hard_example_boost) * rel
+        class_weights = class_weights / max(float(np.sum(class_weights)), 1e-9)
+
     backgrounds_by_split = load_backgrounds_by_split(config.background_splits)
     original_audit = audit_background_split_overlap(backgrounds_by_split)
     if original_audit.get("overlap_count", 0) > 0:
@@ -323,7 +360,15 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                     placed_target: PlacedTarget | None = None
                     placed_score = -1.0
                     for _attempt in range(config.max_attempts):
-                        target = targets[int(rng.integers(0, len(targets)))]
+                        if class_ids:
+                            picked_class = int(rng.choice(np.array(class_ids, dtype=np.int32), p=class_weights))
+                            candidates = target_indices_by_class.get(picked_class, [])
+                            if candidates:
+                                target = targets[int(candidates[int(rng.integers(0, len(candidates)))])]
+                            else:
+                                target = targets[int(rng.integers(0, len(targets)))]
+                        else:
+                            target = targets[int(rng.integers(0, len(targets)))]
                         key = str(target.image_path)
                         if key not in target_images_cache:
                             image = cv2.imread(str(target.image_path), cv2.IMREAD_COLOR)

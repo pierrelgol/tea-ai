@@ -251,6 +251,39 @@ def write_reports(
         for row in sample_rows:
             f.write(json.dumps(row, ensure_ascii=True) + "\n")
 
+    hard_rows = sorted(
+        sample_rows,
+        key=lambda r: (
+            float(r.get("final_score_0_100", 0.0)),
+            -float((r.get("diagnostics", {}) or {}).get("angle_error_deg_mean") or 0.0),
+            float((r.get("diagnostics", {}) or {}).get("iou_mean") or 1.0),
+            -int(r.get("num_class_mismatch", 0)),
+        ),
+    )
+    hard_top = hard_rows[:200]
+    hard_payload = [
+        {
+            "split": str(r.get("split")),
+            "stem": str(r.get("stem")),
+            "final_score_0_100": float(r.get("final_score_0_100", 0.0)),
+            "angle_error_deg_mean": float((r.get("diagnostics", {}) or {}).get("angle_error_deg_mean") or 0.0),
+            "iou_mean": float((r.get("diagnostics", {}) or {}).get("iou_mean") or 0.0),
+            "num_class_mismatch": int(r.get("num_class_mismatch", 0)),
+            "gt_class_ids": [int(x) for x in (r.get("gt_class_ids") or [])],
+            "pred_class_ids": [int(x) for x in (r.get("pred_class_ids") or [])],
+            "hard_class_ids": [int(x) for x in (r.get("hard_class_ids") or [])],
+        }
+        for r in hard_top
+    ]
+    hard_examples_dir = Path("artifacts/detector-train/hard_examples")
+    hard_examples_dir.mkdir(parents=True, exist_ok=True)
+    hard_examples_model = hard_examples_dir / f"hard_examples_{model_key}.jsonl"
+    hard_examples_latest = hard_examples_dir / "latest.jsonl"
+    with hard_examples_model.open("w", encoding="utf-8") as f:
+        for row in hard_payload:
+            f.write(json.dumps(row, ensure_ascii=True) + "\n")
+    hard_examples_latest.write_text(hard_examples_model.read_text(encoding="utf-8"), encoding="utf-8")
+
     lines = [
         "# Detector Grade Summary",
         "",
@@ -278,4 +311,6 @@ def write_reports(
         "summary_json": str(summary_json),
         "sample_jsonl": str(sample_jsonl),
         "summary_md": str(summary_md),
+        "hard_examples_jsonl": str(hard_examples_model),
+        "hard_examples_latest_jsonl": str(hard_examples_latest),
     }

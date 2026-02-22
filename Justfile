@@ -45,3 +45,7 @@ fetch-dataset: venv
 label-targets: venv
     @uv sync --all-packages
     @uv run target-labeller --images-dir targets --labels-dir dataset/targets/labels --classes-file dataset/targets/classes.txt
+
+generate-augmented: venv
+    @uv sync --all-packages
+    @uv run dataset-generator --output-root dataset/augmented

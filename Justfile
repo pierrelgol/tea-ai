@@ -67,26 +67,11 @@ train: venv
 
 eval: venv
     @uv sync --all-packages
-    @weights=$$(uv run python - <<'PY'
-import json
-from pathlib import Path
-
-payload = json.loads(Path("artifacts/detector-train/latest_run.json").read_text(encoding="utf-8"))
-print(payload["weights_best"])
-PY
-); \
-    model_key=$$(uv run python - <<'PY'
-from pathlib import Path
-from detector_grader.data import infer_model_name_from_weights
-import json
-
-payload = json.loads(Path("artifacts/detector-train/latest_run.json").read_text(encoding="utf-8"))
-print(infer_model_name_from_weights(Path(payload["weights_best"])))
-PY
-); \
+    @weights=$$(uv run python -c 'import json; from pathlib import Path; payload=json.loads(Path("artifacts/detector-train/latest_run.json").read_text(encoding="utf-8")); print(payload["weights_best"])'); \
+    model_key=$$(uv run python -c 'import json; from pathlib import Path; from detector_grader.data import infer_model_name_from_weights; payload=json.loads(Path("artifacts/detector-train/latest_run.json").read_text(encoding="utf-8")); print(infer_model_name_from_weights(Path(payload["weights_best"])))'); \
     uv run detector-infer --dataset {{dataset}} --weights "$$weights" --model-name "$$model_key"; \
     uv run detector-grader --dataset {{dataset}} --model "$$model_key" --run-inference false
 
-review MODEL='latest': venv
+review: venv
     @uv sync --all-packages
-    @uv run detector-reviewer --dataset {{dataset}} --model {{MODEL}}
+    @uv run detector-reviewer --dataset {{dataset}} --model latest

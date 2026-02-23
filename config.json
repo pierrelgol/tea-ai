@@ -6,14 +6,14 @@
     "targets_source_root": "targets"
   },
   "run": {
-    "dataset": "coco1024",
+    "dataset": "coco128",
     "model": "hf-openvision-yolo26-n-obb",
     "model_key": "yolo26n_obb",
     "run_id": "current",
     "seed": 42
   },
   "dataset": {
-    "name": "coco1024",
+    "name": "coco128",
     "augmented_subdir": "augmented",
     "splits": ["train", "val"]
   },
@@ -24,7 +24,7 @@
     "epochs": 128,
     "imgsz": 512,
     "batch": 16,
-    "workers": 16,
+    "workers": 8,
     "patience": 30,
     "cache": "auto",
     "device": "auto",

@@ -8,6 +8,7 @@ Run stages in order:
 
 ```bash
 just fetch-dataset
+just fetch-dinov3
 just label-targets
 just generate-dataset
 just check-dataset

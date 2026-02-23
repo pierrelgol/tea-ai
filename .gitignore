@@ -215,3 +215,7 @@ artifacts/
 predictions/
 wandb/
 *.pt
+
+# Downloaded DINOv3 model assets (keep license tracked)
+/dinov3/*
+!/dinov3/LICENSE.md

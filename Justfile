@@ -47,6 +47,10 @@ fetch-dataset: venv
     @uv sync --all-packages
     @uv run dataset-fetcher --config {{config}}
 
+fetch-dinov3: venv
+    @uv sync --all-packages
+    @uv run dinov3-fetcher --config {{config}}
+
 label-targets: venv
     @uv sync --all-packages
     @uv run target-labeller --config {{config}}

@@ -4,10 +4,7 @@
 
 **“Agreement”** means the terms and conditions for use, reproduction, distribution and modification of the DINO Materials set forth herein.
 
-**“DINO Materials”** means, collectively, Documentation and the models, software and algorithms,
-including machine-learning model code, trained model weights, inference-enabling
-code, training-enabling code, fine-tuning enabling code, and other elements of
-the foregoing distributed by Meta and made available under this Agreement.
+**“DINO Materials”** means, collectively, Documentation and the models, software and algorithms, including machine-learning model code, trained model weights, inference-enabling code, training-enabling code, fine-tuning enabling code, and other elements of the foregoing distributed by Meta and made available under this Agreement.
 
 **“Documentation”** means the specifications, manuals and documentation accompanying
 DINO Materials distributed by Meta.

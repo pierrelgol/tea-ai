@@ -17,6 +17,7 @@ members = [
     "detector-reviewer",
     "detector-train",
     "dinov3",
+    "dinov3-fetcher",
     "pipeline-config",
     "target-labeller",
     "tea-ai",
@@ -382,6 +383,21 @@ requires-dist = [
     { name = "safetensors", specifier = ">=0.4.5" },
     { name = "torch", specifier = ">=2.5.0" },
     { name = "transformers", specifier = ">=4.56.0" },
+]
+
+[[package]]
+name = "dinov3-fetcher"
+version = "0.1.0"
+source = { editable = "packages/dinov3-fetcher" }
+dependencies = [
+    { name = "huggingface-hub" },
+    { name = "pipeline-config" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "huggingface-hub", specifier = ">=1.4.1" },
+    { name = "pipeline-config", editable = "packages/pipeline-config" },
 ]
 
 [[package]]
@@ -1707,6 +1723,7 @@ dependencies = [
     { name = "detector-reviewer" },
     { name = "detector-train" },
     { name = "dinov3" },
+    { name = "dinov3-fetcher" },
     { name = "huggingface-hub" },
     { name = "pipeline-config" },
     { name = "target-labeller" },
@@ -1722,6 +1739,7 @@ requires-dist = [
     { name = "detector-reviewer", editable = "packages/detector-reviewer" },
     { name = "detector-train", editable = "packages/detector-train" },
     { name = "dinov3", editable = "packages/dinov3" },
+    { name = "dinov3-fetcher", editable = "packages/dinov3-fetcher" },
     { name = "huggingface-hub", specifier = ">=1.4.1" },
     { name = "pipeline-config", editable = "packages/pipeline-config" },
     { name = "target-labeller", editable = "packages/target-labeller" },

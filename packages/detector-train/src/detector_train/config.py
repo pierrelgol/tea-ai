@@ -16,8 +16,8 @@ class TrainConfig:
     device: str = "auto"
     project: Path = Path("artifacts/detector-train/runs")
 
-    epochs: int = 100
-    imgsz: int = 640
+    epochs: int = 128
+    imgsz: int = 512
     batch: int = 16
     workers: int = 12
     patience: int = 40
@@ -34,7 +34,7 @@ class TrainConfig:
     warmup_epochs: float = 5.0
     cos_lr: bool = True
 
-    close_mosaic: int = 10
+    close_mosaic: int = 16
     mosaic: float = 0.6
     mixup: float = 0.05
     degrees: float = 1.5
@@ -62,7 +62,7 @@ class TrainConfig:
     stage_b_distill_weight: float = 0.08
     dino_viz_enabled: bool = True
     dino_viz_every_n_epochs: int = 5
-    dino_viz_max_samples: int = 4
+    dino_viz_max_samples: int = 1
 
     wandb_enabled: bool = True
     wandb_project: str = "tea-ai-detector"

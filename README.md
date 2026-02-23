@@ -1,6 +1,6 @@
 # tea-ai
 
-Linear YOLO OBB fine-tuning pipeline.
+Linear YOLO OBB fine-tuning pipeline driven by a shared root `config.json`.
 
 ## Pipeline
 
@@ -15,6 +15,8 @@ just train
 just eval
 just review
 ```
+
+All stages read the same `config.json`.
 
 Cleanup:
 

@@ -9,6 +9,7 @@ description = "GUI and metrics checker for augmented dataset quality"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "pipeline-config",
   "numpy>=2.1.0",
   "opencv-python-headless>=4.10.0.84",
   "PySide6>=6.7.0",

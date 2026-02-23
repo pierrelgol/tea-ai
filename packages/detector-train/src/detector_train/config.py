@@ -14,7 +14,7 @@ class TrainConfig:
     seed: int
 
     device: str = "auto"
-    project: Path = Path("artifacts/detector-train/runs")
+    project: Path = Path("artifacts/models/default/runs/current/train/ultralytics")
 
     epochs: int = 128
     imgsz: int = 512
@@ -79,6 +79,7 @@ class TrainConfig:
     eval_iou_threshold: float = 0.75
     eval_conf_threshold: float = 0.9
     eval_viz_samples: int = 0
+    eval_viz_split: str = "val"
 
     save_json: bool = True
 
@@ -147,3 +148,5 @@ class TrainConfig:
             raise ValueError("eval_conf_threshold must be in [0,1]")
         if self.eval_viz_samples < 0:
             raise ValueError("eval_viz_samples must be >= 0")
+        if self.eval_viz_split not in {"train", "val"}:
+            raise ValueError("eval_viz_split must be one of: train, val")

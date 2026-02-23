@@ -17,6 +17,7 @@ members = [
     "detector-reviewer",
     "detector-train",
     "dinov3",
+    "pipeline-config",
     "target-labeller",
     "tea-ai",
 ]
@@ -59,6 +60,7 @@ source = { editable = "packages/augment-checker" }
 dependencies = [
     { name = "numpy" },
     { name = "opencv-python-headless" },
+    { name = "pipeline-config" },
     { name = "pyside6" },
 ]
 
@@ -66,6 +68,7 @@ dependencies = [
 requires-dist = [
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
+    { name = "pipeline-config", editable = "packages/pipeline-config" },
     { name = "pyside6", specifier = ">=6.7.0" },
 ]
 
@@ -258,6 +261,12 @@ wheels = [
 name = "dataset-fetcher"
 version = "0.1.0"
 source = { editable = "packages/dataset-fetcher" }
+dependencies = [
+    { name = "pipeline-config" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pipeline-config", editable = "packages/pipeline-config" }]
 
 [[package]]
 name = "dataset-generator"
@@ -266,12 +275,14 @@ source = { editable = "packages/dataset-generator" }
 dependencies = [
     { name = "numpy" },
     { name = "opencv-python-headless" },
+    { name = "pipeline-config" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
+    { name = "pipeline-config", editable = "packages/pipeline-config" },
 ]
 
 [[package]]
@@ -282,6 +293,7 @@ dependencies = [
     { name = "detector-infer" },
     { name = "numpy" },
     { name = "opencv-python-headless" },
+    { name = "pipeline-config" },
 ]
 
 [package.metadata]
@@ -289,6 +301,7 @@ requires-dist = [
     { name = "detector-infer", editable = "packages/detector-infer" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
+    { name = "pipeline-config", editable = "packages/pipeline-config" },
 ]
 
 [[package]]
@@ -297,12 +310,14 @@ version = "0.1.0"
 source = { editable = "packages/detector-infer" }
 dependencies = [
     { name = "numpy" },
+    { name = "pipeline-config" },
     { name = "ultralytics" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=2.1.0" },
+    { name = "pipeline-config", editable = "packages/pipeline-config" },
     { name = "ultralytics", specifier = ">=8.3.0" },
 ]
 
@@ -314,6 +329,7 @@ dependencies = [
     { name = "detector-grader" },
     { name = "numpy" },
     { name = "opencv-python-headless" },
+    { name = "pipeline-config" },
     { name = "pyside6" },
 ]
 
@@ -322,6 +338,7 @@ requires-dist = [
     { name = "detector-grader", editable = "packages/detector-grader" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
+    { name = "pipeline-config", editable = "packages/pipeline-config" },
     { name = "pyside6", specifier = ">=6.7.0" },
 ]
 
@@ -333,6 +350,7 @@ dependencies = [
     { name = "detector-grader" },
     { name = "detector-infer" },
     { name = "dinov3" },
+    { name = "pipeline-config" },
     { name = "pyyaml" },
     { name = "ultralytics" },
     { name = "wandb" },
@@ -343,6 +361,7 @@ requires-dist = [
     { name = "detector-grader", editable = "packages/detector-grader" },
     { name = "detector-infer", editable = "packages/detector-infer" },
     { name = "dinov3", editable = "packages/dinov3" },
+    { name = "pipeline-config", editable = "packages/pipeline-config" },
     { name = "pyyaml", specifier = ">=6.0.1" },
     { name = "ultralytics", specifier = "==8.4.14" },
     { name = "wandb", specifier = "==0.25.0" },
@@ -1094,6 +1113,11 @@ wheels = [
 ]
 
 [[package]]
+name = "pipeline-config"
+version = "0.1.0"
+source = { editable = "packages/pipeline-config" }
+
+[[package]]
 name = "platformdirs"
 version = "4.9.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1660,11 +1684,15 @@ name = "target-labeller"
 version = "0.1.0"
 source = { editable = "packages/target-labeller" }
 dependencies = [
+    { name = "pipeline-config" },
     { name = "pyside6" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pyside6", specifier = ">=6.7.0" }]
+requires-dist = [
+    { name = "pipeline-config", editable = "packages/pipeline-config" },
+    { name = "pyside6", specifier = ">=6.7.0" },
+]
 
 [[package]]
 name = "tea-ai"
@@ -1680,6 +1708,7 @@ dependencies = [
     { name = "detector-train" },
     { name = "dinov3" },
     { name = "huggingface-hub" },
+    { name = "pipeline-config" },
     { name = "target-labeller" },
 ]
 
@@ -1694,6 +1723,7 @@ requires-dist = [
     { name = "detector-train", editable = "packages/detector-train" },
     { name = "dinov3", editable = "packages/dinov3" },
     { name = "huggingface-hub", specifier = ">=1.4.1" },
+    { name = "pipeline-config", editable = "packages/pipeline-config" },
     { name = "target-labeller", editable = "packages/target-labeller" },
 ]
 

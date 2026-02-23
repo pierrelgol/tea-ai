@@ -12,7 +12,7 @@ Simple Qt GUI tool to label one bounding box per image and export YOLO OBB forma
 ## Run
 
 ```bash
-uv run target-labeller
+uv run target-labeller --config config.json
 ```
 
 ## Controls

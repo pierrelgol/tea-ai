@@ -4,7 +4,7 @@ Canonical evaluation and grading tool for detector runs.
 
 ## What it does
 
-- Resolves a model source (`latest`, `.`, weights path, run dir, or prediction key)
+- Resolves model/weights from shared config
 - Optionally runs inference via `detector-infer`
 - Loads GT + prediction OBB labels and scores geometric quality
 - Produces per-sample, per-split, and run-level grading reports
@@ -13,7 +13,5 @@ Canonical evaluation and grading tool for detector runs.
 ## Run
 
 ```bash
-uv run detector-grader \
-  --dataset coco128 \
-  --model latest
+uv run detector-grader --config config.json
 ```

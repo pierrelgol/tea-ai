@@ -26,9 +26,10 @@ from .scoring import ScoreWeights, score_sample
 @dataclass(slots=True)
 class GradingConfig:
     dataset_root: Path
-    predictions_root: Path = Path("predictions")
-    artifacts_root: Path = Path("artifacts/detector-train")
+    predictions_root: Path = Path("artifacts/models/default/runs/current/infer")
+    artifacts_root: Path = Path("artifacts/models")
     reports_dir: Path | None = None
+    hard_examples_dir: Path | None = None
     model: str = "latest"
     weights: Path | None = None
     run_inference: bool = True
@@ -230,7 +231,7 @@ def _calibrate_per_class_thresholds(
 
 def run_grading(config: GradingConfig) -> dict[str, Any]:
     splits = config.splits if config.splits is not None else ["train", "val"]
-    reports_dir = config.reports_dir if config.reports_dir is not None else config.dataset_root / "grade_reports"
+    reports_dir = config.reports_dir if config.reports_dir is not None else (config.predictions_root.parent / "reports")
     if reports_dir.exists():
         shutil.rmtree(reports_dir)
     weights_profile = load_weights_profile(config.weights_json)
@@ -446,6 +447,7 @@ def run_grading(config: GradingConfig) -> dict[str, Any]:
 
     out = write_reports(
         reports_dir=reports_dir,
+        hard_examples_dir=config.hard_examples_dir,
         model_name=model_key,
         config=report_config,
         sample_rows=sample_rows,

@@ -4,6 +4,8 @@ import argparse
 from pathlib import Path
 import shutil
 
+from pipeline_config import build_layout, load_pipeline_config
+
 from .dataset_index import index_dataset
 from .geometry import run_geometry_checks
 from .gui import launch_gui
@@ -18,28 +20,34 @@ MAX_MEAN_CORNER_ERROR_PX = 1.5
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Check augmented dataset integrity and geometry")
-    parser.add_argument("--dataset", default="coco1024", help="Dataset name under dataset/augmented/")
-    parser.add_argument("--outlier-threshold-px", type=float, default=2.0)
-    parser.add_argument("--debug-overlays-per-split", type=int, default=10)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--gui", action="store_true")
+    parser.add_argument("--config", type=Path, default=Path("config.json"))
     args = parser.parse_args()
 
-    dataset_root = Path("dataset/augmented") / args.dataset
+    shared = load_pipeline_config(args.config)
+    dataset_name = str(shared.dataset.get("name") or shared.run["dataset"])
+    dataset_root = shared.paths["dataset_root"] / str(shared.dataset.get("augmented_subdir", "augmented")) / dataset_name
+
+    layout = build_layout(
+        artifacts_root=shared.paths["artifacts_root"],
+        model_key=str(shared.run["model_key"]),
+        run_id=str(shared.run["run_id"]),
+    )
+
     reports_dir = dataset_root / "reports"
     if reports_dir.exists():
         shutil.rmtree(reports_dir)
 
+    cc = shared.checks
     records = index_dataset(dataset_root)
     integrity_issues, integrity_summary = run_integrity_checks(records)
-    geometry_metrics, geometry_summary = run_geometry_checks(records, args.outlier_threshold_px)
-    model_reports = run_prediction_checks(records, None)
+    geometry_metrics, geometry_summary = run_geometry_checks(records, float(cc.get("outlier_threshold_px", 2.0)))
+    model_reports = run_prediction_checks(records, layout.infer_root)
 
     export_debug_overlays(
         records=records,
         reports_dir=reports_dir,
-        n_per_split=args.debug_overlays_per_split,
-        seed=args.seed,
+        n_per_split=int(cc.get("debug_overlays_per_split", 10)),
+        seed=int(cc.get("seed", shared.run["seed"])),
     )
 
     write_reports(
@@ -72,10 +80,14 @@ def main() -> None:
             print(f"CHECK FAILED: {failure}")
         raise SystemExit(2)
 
-    if args.gui:
+    if bool(cc.get("gui", False)):
         launch_gui(
             records=records,
             integrity_issues=integrity_issues,
             geometry_metrics=geometry_metrics,
             model_reports=model_reports,
         )
+
+
+if __name__ == "__main__":
+    main()

@@ -9,6 +9,7 @@ description = "GUI reviewer to visualize detector predictions against ground tru
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "pipeline-config",
   "detector-grader",
   "numpy>=2.1.0",
   "opencv-python-headless>=4.10.0.84",

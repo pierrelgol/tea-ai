@@ -5,7 +5,7 @@ Lean synthetic dataset generator.
 ## Run
 
 ```bash
-uv run dataset-generator --dataset coco8 --seed 42
+uv run dataset-generator --config config.json
 ```
 
 ## Data contract

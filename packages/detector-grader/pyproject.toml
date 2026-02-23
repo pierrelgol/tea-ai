@@ -9,6 +9,7 @@ description = "OBB-focused run grading tool for detector predictions"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "pipeline-config",
   "detector-infer",
   "numpy>=2.1.0",
   "opencv-python-headless>=4.10.0.84",

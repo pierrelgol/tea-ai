@@ -132,8 +132,16 @@ def resolve_latest_weights(artifacts_root: Path) -> Path:
             if p.exists():
                 return p
 
-    candidates = sorted(
+    legacy_candidates = sorted(
         (artifacts_root / "runs").glob("**/weights/best.pt"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if legacy_candidates:
+        return legacy_candidates[0]
+
+    candidates = sorted(
+        artifacts_root.glob("*/runs/*/train/ultralytics/*/weights/best.pt"),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -143,8 +151,15 @@ def resolve_latest_weights(artifacts_root: Path) -> Path:
 
 
 def infer_model_name_from_weights(weights: Path) -> str:
-    if weights.parent.name == "weights" and weights.parent.parent.name:
-        run_name = weights.parent.parent.name
-        suffix = weights.stem
-        return sanitize_model_name(f"{run_name}_{suffix}")
+    if weights.parent.name == "weights":
+        parents = [p.name for p in weights.parents]
+        if "runs" in parents:
+            run_idx = parents.index("runs")
+            if run_idx >= 2:
+                run_name = parents[run_idx - 1]
+                model_key = parents[run_idx - 2]
+                return sanitize_model_name(f"{model_key}_{run_name}_{weights.stem}")
+        if weights.parent.parent.name:
+            run_name = weights.parent.parent.name
+            return sanitize_model_name(f"{run_name}_{weights.stem}")
     return sanitize_model_name(weights.stem)

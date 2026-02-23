@@ -5,7 +5,7 @@ Fetches datasets into a top-level `dataset/` directory using versioned profile c
 ## Usage
 
 ```bash
-uv run dataset-fetcher --dataset coco8
+uv run dataset-fetcher --config config.json
 ```
 
 Built-in profiles live in `configs/datasets/*.json` (e.g. `coco8`, `coco128`, `coco17`).

@@ -18,7 +18,7 @@ class GeneratorConfig:
     target_labels_dir: Path = Path("targets/labels")
     target_classes_file: Path = Path("targets/classes.txt")
     output_root: Path = Path("augmented/default")
-    hard_examples_path: Path | None = Path("artifacts/detector-train/hard_examples/latest.jsonl")
+    hard_examples_path: Path | None = Path("artifacts/models/default/runs/current/grade/hard_examples/latest.jsonl")
     hard_example_boost: float = 1.5
     class_balance_strength: float = 1.0
     curriculum_enabled: bool = True

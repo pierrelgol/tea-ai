@@ -3,7 +3,7 @@
 Focused inference module.
 
 Responsibilities:
-- Load weights
+- Resolve weights from shared config/latest run
 - Run inference
 - Save predictions in YOLO format
 - Enforce OBB-only predictions (fails if model does not output OBB)
@@ -11,8 +11,5 @@ Responsibilities:
 ## Run
 
 ```bash
-uv run detector-infer \
-  --weights artifacts/detector-train/runs/my-run/weights/best.pt \
-  --dataset coco8 \
-  --model-name yolo11n-obb
+uv run detector-infer --config config.json
 ```

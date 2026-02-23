@@ -11,9 +11,9 @@
       "val_ids_rel": "stuff_annotations_trainval2017/annotations/deprecated-challenge2017/val-ids.txt"
     },
     "subset": {
-      "train_max_images": 384,
-      "val_max_images": 128,
-      "seed": 42
+      "train_max_images": 768,
+      "val_max_images": 256,
+      "seed": 2707
     }
   },
   "splits": {

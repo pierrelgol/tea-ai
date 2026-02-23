@@ -1,5 +1,6 @@
 set shell := ["bash", "-cu"]
-dataset := "coco1024"
+
+config := "config.json"
 
 default:
     @just --list
@@ -20,7 +21,7 @@ build: venv
 
 clean:
     @find . -type d \( -name "__pycache__" -o -name ".pytest_cache" -o -name ".ruff_cache" -o -name ".mypy_cache" \) -prune -exec rm -rf {} +
-    @for path in artifacts dataset predictions wandb; do \
+    @for path in artifacts dataset wandb; do \
       if [[ -e "$path" ]]; then rm -rf "$path"; fi; \
     done
     @if [[ -d dist || -d build || -f .coverage || -d htmlcov ]]; then \
@@ -44,38 +45,29 @@ fclean: clean
 
 fetch-dataset: venv
     @uv sync --all-packages
-    @rm -rf dataset/{{dataset}}
-    @uv run dataset-fetcher --dataset {{dataset}}
+    @uv run dataset-fetcher --config {{config}}
 
 label-targets: venv
     @uv sync --all-packages
-    @rm -rf dataset/targets/images dataset/targets/labels
-    @uv run target-labeller
+    @uv run target-labeller --config {{config}}
 
 generate-dataset: venv
     @uv sync --all-packages
-    @rm -rf dataset/augmented/{{dataset}}
-    @uv run dataset-generator --dataset {{dataset}}
+    @uv run dataset-generator --config {{config}}
 
 check-dataset: venv
     @uv sync --all-packages
-    @rm -rf dataset/augmented/{{dataset}}/reports
-    @uv run augment-checker --dataset {{dataset}}
+    @uv run augment-checker --config {{config}}
 
 train: venv
     @uv sync --all-packages
-    @rm -rf artifacts/detector-train/runs/current artifacts/detector-train/eval_predictions/current artifacts/detector-train/eval_reports/current
-    @uv run detector-train --dataset {{dataset}}
+    @uv run detector-train --config {{config}}
 
 eval: venv
     @uv sync --all-packages
-    @rm -rf predictions dataset/augmented/{{dataset}}/grade_reports
-    @latest_json="artifacts/detector-train/latest_run.json"; \
-    weights=$(uv run python -c "import json,sys; print(json.loads(open(sys.argv[1], encoding='utf-8').read())['weights_best'])" "$latest_json"); \
-    model_key=$(uv run python -c "import json,sys; from pathlib import Path; from detector_grader.data import infer_model_name_from_weights; payload=json.loads(open(sys.argv[1], encoding='utf-8').read()); print(infer_model_name_from_weights(Path(payload['weights_best'])))" "$latest_json"); \
-    uv run detector-infer --dataset {{dataset}} --weights "$weights" --model-name "$model_key" && \
-    uv run detector-grader --dataset {{dataset}} --model "$model_key" --no-run-inference
+    @uv run detector-infer --config {{config}}
+    @uv run detector-grader --config {{config}}
 
 review: venv
     @uv sync --all-packages
-    @uv run detector-reviewer --dataset {{dataset}} --model latest
+    @uv run detector-reviewer --config {{config}}

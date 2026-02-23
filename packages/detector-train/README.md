@@ -8,9 +8,10 @@ Responsibilities:
 - Save weights + summaries
 - Log to W&B (auto online/offline fallback)
 - Run periodic grader checks (inference + scoring)
+- Export per-eval epoch visual overlays
 
 ## Run
 
 ```bash
-uv run detector-train --dataset coco8
+uv run detector-train --config config.json
 ```

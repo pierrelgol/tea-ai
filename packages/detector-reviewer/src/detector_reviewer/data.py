@@ -10,7 +10,6 @@ from detector_grader.data import (
     load_labels,
     load_prediction_labels,
 )
-from detector_grader.pipeline import resolve_model_source
 
 
 @dataclass(slots=True)
@@ -26,24 +25,6 @@ class Sample:
     stem: str
     image_path: Path | None
     gt_label_path: Path | None
-
-
-
-def resolve_model_key(
-    *,
-    model: str,
-    artifacts_root: Path,
-    predictions_root: Path,
-) -> str:
-    _weights, model_key, _existing = resolve_model_source(
-        model_arg=model,
-        weights_arg=None,
-        artifacts_root=artifacts_root,
-        predictions_root=predictions_root,
-    )
-    return model_key
-
-
 
 def index_samples(dataset_root: Path, splits: list[str]) -> list[Sample]:
     split_set = set(splits)

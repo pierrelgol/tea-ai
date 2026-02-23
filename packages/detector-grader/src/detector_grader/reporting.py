@@ -228,6 +228,7 @@ def aggregate_scores(samples: list[dict[str, Any]]) -> dict[str, Any]:
 
 def write_reports(
     reports_dir: Path,
+    hard_examples_dir: Path | None,
     model_name: str,
     config: dict[str, Any],
     sample_rows: list[dict[str, Any]],
@@ -275,7 +276,7 @@ def write_reports(
         }
         for r in hard_top
     ]
-    hard_examples_dir = Path("artifacts/detector-train/hard_examples")
+    hard_examples_dir = hard_examples_dir if hard_examples_dir is not None else (reports_dir / "hard_examples")
     hard_examples_dir.mkdir(parents=True, exist_ok=True)
     hard_examples_model = hard_examples_dir / f"hard_examples_{model_key}.jsonl"
     hard_examples_latest = hard_examples_dir / "latest.jsonl"

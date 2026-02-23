@@ -14,5 +14,5 @@ GUI + report checker for synthetic augmentation quality.
 ## Run
 
 ```bash
-uv run augment-checker --dataset coco8
+uv run augment-checker --config config.json
 ```

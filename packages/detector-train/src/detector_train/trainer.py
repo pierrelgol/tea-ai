@@ -10,12 +10,15 @@ import json
 import os
 import re
 import shutil
+import cv2
+import numpy as np
 
 from .config import TrainConfig
 from .data_yaml import write_data_yaml
 from .dino_viz import save_dino_visualizations
 from .dino_trainer import DinoDistillConfig, DinoOBBTrainer
 from .wandb_logger import finish_wandb, init_wandb, log_wandb
+from detector_grader.data import index_ground_truth, load_labels, load_prediction_labels
 
 
 def _resolve_device(requested: str) -> str:
@@ -265,8 +268,9 @@ def _run_periodic_eval(
         log_wandb(wandb_run, {"eval/status": 0.0}, step=epoch)
         return {"status": "skipped", "reason": f"missing checkpoint: {weights_last}"}
 
-    pred_root = config.artifacts_root / "eval_predictions" / run_name / f"epoch_{epoch:03d}"
-    reports_dir = config.artifacts_root / "eval_reports" / run_name / f"epoch_{epoch:03d}"
+    epoch_root = config.artifacts_root / "eval" / f"epoch_{epoch:03d}"
+    pred_root = epoch_root / "predictions"
+    reports_dir = epoch_root / "reports"
     result = run_grading(
         GradingConfig(
             dataset_root=config.dataset_root,
@@ -309,7 +313,123 @@ def _run_periodic_eval(
         "status": "ok",
         "epoch": epoch,
         "weights_last": str(weights_last),
+        "epoch_root": str(epoch_root),
+        "predictions_root": str(pred_root),
         "grading": result,
+    }
+
+
+def _corners_to_px(corners_norm: np.ndarray, width: int, height: int) -> np.ndarray:
+    out = corners_norm.astype(np.float64).copy()
+    out[:, 0] *= width
+    out[:, 1] *= height
+    return out.astype(np.float32)
+
+
+def _draw_label_set(
+    image_bgr: np.ndarray,
+    labels,
+    *,
+    color: tuple[int, int, int],
+    tag: str,
+) -> np.ndarray:
+    out = image_bgr.copy()
+    h, w = out.shape[:2]
+    for idx, label in enumerate(labels):
+        px = _corners_to_px(label.corners_norm, w, h).astype(np.int32)
+        cv2.polylines(out, [px.reshape((-1, 1, 2))], True, color, 2)
+        x = int(np.min(px[:, 0]))
+        y = int(np.min(px[:, 1])) - 6
+        cv2.putText(
+            out,
+            f"{tag} c{int(label.class_id)} #{idx}",
+            (max(2, x), max(16, y)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            color,
+            1,
+            cv2.LINE_AA,
+        )
+    return out
+
+
+def _write_eval_visual_artifacts(
+    *,
+    config: TrainConfig,
+    eval_result: dict[str, Any],
+    epoch: int,
+) -> dict[str, Any]:
+    if config.eval_viz_samples <= 0:
+        return {"enabled": False, "reason": "eval_viz_samples=0"}
+
+    grading = eval_result.get("grading", {})
+    model_key = grading.get("model_key")
+    predictions_root_raw = eval_result.get("predictions_root")
+    if not model_key or not predictions_root_raw:
+        return {"enabled": False, "reason": "missing model key or predictions root"}
+    predictions_root = Path(str(predictions_root_raw))
+
+    split = str(config.eval_viz_split)
+    candidates = [r for r in index_ground_truth(config.dataset_root) if r.split == split and r.image_path is not None]
+    if not candidates:
+        return {"enabled": False, "reason": f"no {split} samples found"}
+
+    selected = sorted(candidates, key=lambda r: r.stem)[: int(config.eval_viz_samples)]
+    viz_root = config.artifacts_root / "eval" / f"epoch_{epoch:03d}" / "viz" / split
+    viz_root.mkdir(parents=True, exist_ok=True)
+
+    rows: list[dict[str, Any]] = []
+    for rec in selected:
+        image = cv2.imread(str(rec.image_path), cv2.IMREAD_COLOR)
+        if image is None:
+            continue
+
+        gt = load_labels(rec.gt_label_path, is_prediction=False, conf_threshold=0.0) if rec.gt_label_path else []
+        preds = load_prediction_labels(
+            predictions_root=predictions_root,
+            model_name=str(model_key),
+            split=rec.split,
+            stem=rec.stem,
+            conf_threshold=float(config.eval_conf_threshold),
+        )
+
+        gt_only = _draw_label_set(image, gt, color=(0, 255, 0), tag="GT")
+        pred_only = _draw_label_set(image, preds, color=(0, 0, 255), tag="PR")
+        panel = _draw_label_set(gt_only, preds, color=(0, 0, 255), tag="PR")
+
+        gt_path = viz_root / f"{rec.stem}_gt.png"
+        pred_path = viz_root / f"{rec.stem}_pred.png"
+        panel_path = viz_root / f"{rec.stem}_panel.png"
+
+        cv2.imwrite(str(gt_path), gt_only)
+        cv2.imwrite(str(pred_path), pred_only)
+        cv2.imwrite(str(panel_path), panel)
+        rows.append(
+            {
+                "split": rec.split,
+                "stem": rec.stem,
+                "gt_overlay": str(gt_path),
+                "pred_overlay": str(pred_path),
+                "panel_overlay": str(panel_path),
+            }
+        )
+
+    index_payload = {
+        "epoch": epoch,
+        "split": split,
+        "samples_requested": int(config.eval_viz_samples),
+        "samples_written": len(rows),
+        "rows": rows,
+    }
+    index_path = viz_root / "index.json"
+    index_path.write_text(json.dumps(index_payload, indent=2), encoding="utf-8")
+
+    return {
+        "enabled": True,
+        "split": split,
+        "viz_root": str(viz_root),
+        "index_json": str(index_path),
+        "samples": rows,
     }
 
 
@@ -399,15 +519,12 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
     try:
         from ultralytics import YOLO
 
+        if config.artifacts_root.exists():
+            shutil.rmtree(config.artifacts_root)
+        config.artifacts_root.mkdir(parents=True, exist_ok=True)
         save_dir_base = project_dir / config.name
         if save_dir_base.exists():
             shutil.rmtree(save_dir_base)
-        eval_predictions_root = config.artifacts_root / "eval_predictions" / config.name
-        eval_reports_root = config.artifacts_root / "eval_reports" / config.name
-        if eval_predictions_root.exists():
-            shutil.rmtree(eval_predictions_root)
-        if eval_reports_root.exists():
-            shutil.rmtree(eval_reports_root)
 
         stage_a_epochs = 0
         if config.epochs >= 2:
@@ -497,6 +614,11 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                     device=device,
                     run_name=config.name,
                     wandb_run=wandb_run,
+                )
+                eval_result["visualization"] = _write_eval_visual_artifacts(
+                    config=config,
+                    eval_result=eval_result,
+                    epoch=current_epoch,
                 )
                 periodic_eval.append(eval_result)
                 grade = eval_result.get("grading", {}).get("aggregate", {}).get("run_grade_0_100")
@@ -641,10 +763,14 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         run_summary_path = save_dir / "train_summary.json"
         run_summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
-        latest_path = config.artifacts_root / "latest_run.json"
+        artifacts_base = config.artifacts_root
+        if len(config.artifacts_root.parents) >= 3:
+            artifacts_base = config.artifacts_root.parents[2]
+        latest_path = artifacts_base / "latest_run.json"
         latest_path.parent.mkdir(parents=True, exist_ok=True)
         latest_payload = {
             "run_name": config.name,
+            "run_root": str(config.artifacts_root),
             "save_dir": summary["artifacts"]["save_dir"],
             "weights_best": summary["artifacts"]["weights_best"],
             "weights_last": summary["artifacts"]["weights_last"],

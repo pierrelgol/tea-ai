@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "Fetch and prepare datasets for tea-ai"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+  "pipeline-config",
+]
 
 [project.scripts]
 dataset-fetcher = "dataset_fetcher.cli:main"

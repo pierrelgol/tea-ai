@@ -3,6 +3,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from pipeline_config import build_layout, load_pipeline_config
+
+from .data import resolve_latest_weights
 from .pipeline import GradingConfig, run_grading
 
 
@@ -14,36 +17,51 @@ def _fmt_float(v: float | None, digits: int = 4) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Grade detector runs from strict OBB geometry quality")
-    parser.add_argument("--dataset", default="coco1024", help="Dataset name under dataset/augmented/")
-    parser.add_argument("--model", default="latest", help="Prediction model key or latest")
-    parser.add_argument("--run-inference", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--conf-threshold", type=float, default=0.25, help="Confidence threshold for infer + grading")
-    parser.add_argument("--calibrate-confidence", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--config", type=Path, default=Path("config.json"))
     args = parser.parse_args()
 
-    dataset_root = Path("dataset/augmented") / args.dataset
+    shared = load_pipeline_config(args.config)
+    dataset_name = str(shared.dataset.get("name") or shared.run["dataset"])
+    dataset_root = shared.paths["dataset_root"] / str(shared.dataset.get("augmented_subdir", "augmented")) / dataset_name
+
+    model_key = str(shared.run["model_key"])
+    run_id = str(shared.run["run_id"])
+    layout = build_layout(
+        artifacts_root=shared.paths["artifacts_root"],
+        model_key=model_key,
+        run_id=run_id,
+    )
+
+    gc = shared.grade
+    run_inference = bool(gc.get("run_inference", True))
+    weights = resolve_latest_weights(shared.paths["artifacts_root"]) if run_inference else None
 
     result = run_grading(
         GradingConfig(
             dataset_root=dataset_root,
-            predictions_root=Path("predictions"),
-            artifacts_root=Path("artifacts/detector-train"),
-            reports_dir=None,
-            model=args.model,
-            weights=None,
-            run_inference=args.run_inference,
-            splits=["val"],
-            imgsz=640,
-            device="auto",
-            conf_threshold=args.conf_threshold,
-            calibrate_confidence=args.calibrate_confidence,
-            infer_iou_threshold=0.7,
-            match_iou_threshold=0.5,
-            weights_json=None,
-            strict_obb=True,
-            max_samples=None,
-            seed=args.seed,
+            predictions_root=layout.infer_root,
+            artifacts_root=shared.paths["artifacts_root"],
+            reports_dir=layout.grade_root / "reports",
+            hard_examples_dir=layout.grade_root / "hard_examples",
+            model=model_key,
+            weights=weights,
+            run_inference=run_inference,
+            splits=[str(s) for s in gc.get("splits", ["val"])],
+            imgsz=int(gc.get("imgsz", 640)),
+            device=str(gc.get("device", "auto")),
+            conf_threshold=float(gc.get("conf_threshold", 0.25)),
+            calibrate_confidence=bool(gc.get("calibrate_confidence", True)),
+            infer_iou_threshold=float(gc.get("infer_iou_threshold", 0.7)),
+            match_iou_threshold=float(gc.get("match_iou_threshold", 0.5)),
+            weights_json=Path(str(gc["weights_json"])) if gc.get("weights_json") else None,
+            strict_obb=bool(gc.get("strict_obb", True)),
+            max_samples=None if gc.get("max_samples") is None else int(gc.get("max_samples")),
+            seed=int(shared.run["seed"]),
+            calibration_candidates=(
+                None
+                if gc.get("calibration_candidates") is None
+                else [float(v) for v in gc.get("calibration_candidates")]
+            ),
         )
     )
 
@@ -53,7 +71,7 @@ def main() -> None:
     print("Model Source")
     print(f"- resolved_model_key: {result['model_key']}")
     print(f"- weights: {result['weights_path'] or 'N/A (using existing predictions)'}")
-    print(f"- predictions_root: {Path('predictions') / result['model_key'] / 'labels'}")
+    print(f"- predictions_root: {layout.infer_root / result['model_key'] / 'labels'}")
     print("")
     print("Inference")
     if result["inference"] is None:

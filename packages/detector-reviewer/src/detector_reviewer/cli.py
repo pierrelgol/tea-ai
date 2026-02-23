@@ -3,39 +3,43 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from pipeline_config import build_layout, load_pipeline_config
+
 from .app import launch_gui
-from .data import index_samples, resolve_model_key
+from .data import index_samples
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Visual checker for detector predictions vs ground truth")
-    parser.add_argument("--dataset", default="coco8", help="Dataset name under dataset/augmented/")
-    parser.add_argument("--model", default="latest", help="Model key/source used under predictions")
-    parser.add_argument("--conf-threshold", type=float, default=0.25)
+    parser.add_argument("--config", type=Path, default=Path("config.json"))
     args = parser.parse_args()
 
-    dataset_root = Path("dataset/augmented") / args.dataset
+    shared = load_pipeline_config(args.config)
+    dataset_name = str(shared.dataset.get("name") or shared.run["dataset"])
+    dataset_root = shared.paths["dataset_root"] / str(shared.dataset.get("augmented_subdir", "augmented")) / dataset_name
 
-    samples = index_samples(dataset_root=dataset_root, splits=["val"])
+    model_key = str(shared.run["model_key"])
+    layout = build_layout(
+        artifacts_root=shared.paths["artifacts_root"],
+        model_key=model_key,
+        run_id=str(shared.run["run_id"]),
+    )
+
+    split = str(shared.review.get("split", "val"))
+    samples = index_samples(dataset_root=dataset_root, splits=[split])
     if not samples:
         raise RuntimeError(f"no samples found in dataset: {dataset_root}")
 
-    model_key = resolve_model_key(
-        model=args.model,
-        artifacts_root=Path("artifacts/detector-train"),
-        predictions_root=Path("predictions"),
-    )
-
     print(f"dataset_root: {dataset_root}")
-    print("predictions_root: predictions")
+    print(f"predictions_root: {layout.infer_root}")
     print(f"model_key: {model_key}")
     print(f"samples: {len(samples)}")
 
     launch_gui(
         samples=samples,
-        predictions_root=Path("predictions"),
+        predictions_root=layout.infer_root,
         model_name=model_key,
-        conf_threshold=args.conf_threshold,
+        conf_threshold=float(shared.review.get("conf_threshold", 0.25)),
     )
 
 

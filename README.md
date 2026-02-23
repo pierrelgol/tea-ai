@@ -8,15 +8,15 @@ Production-grade pipeline for fine-tuning YOLO OBB (Oriented Bounding Box) detec
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                              TEA-AI PIPELINE                                            │
 ├─────────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                          │
-│   INPUTS                                                                                 │
+│                                                                                         │
+│   INPUTS                                                                                │
 │   ├── Background Dataset (COCO, etc.)                                                   │
 │   └── Target Objects (canonical images with OBB labels)                                 │
-│          │                                                                               │
-│          ▼                                                                               │
+│          │                                                                              │
+│          ▼                                                                              │
 │   ┌─────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                         DATA PREPARATION STAGES                                  │   │
-│   │                                                                                  │   │
+│   │                         DATA PREPARATION STAGES                                 │   │
+│   │                                                                                 │   │
 │   │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                  │   │
 │   │  │ dataset-fetcher │  │ dinov3-fetcher  │  │ target-labeller │                  │   │
 │   │  │ ─────────────── │  │ ─────────────── │  │ ─────────────── │                  │   │
@@ -26,68 +26,68 @@ Production-grade pipeline for fine-tuning YOLO OBB (Oriented Bounding Box) detec
 │   │  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘                  │   │
 │   │           │                    │                    │                           │   │
 │   │           ▼                    ▼                    ▼                           │   │
-│   │  ┌─────────────────────────────────────────────────────────────────────────┐   │   │
-│   │  │                    dataset-generator                                     │   │   │
-│   │  │ ─────────────────────────────────────────────────────────────────────── │   │   │
-│   │  │  Homography + Photometric Synthesis → Synthetic OBB Dataset             │   │   │
-│   │  │  • Curriculum-adaptive difficulty                                       │   │   │
-│   │  │  • Multi-target placement with occlusion handling                       │   │   │
-│   │  │  • Class-balancing with hard-example boosting                           │   │   │
-│   │  └────────┬────────────────────────────────────────────────────────────────┘   │   │
-│   │           │                                                                      │   │
-│   │           ▼                                                                      │   │
-│   │  ┌─────────────────┐                                                             │   │
+│   │  ┌─────────────────────────────────────────────────────────────────────────┐    │   │
+│   │  │                    dataset-generator                                    │    │   │
+│   │  │ ─────────────────────────────────────────────────────────────────────── │    │   │
+│   │  │  Homography + Photometric Synthesis → Synthetic OBB Dataset             │    │   │
+│   │  │  • Curriculum-adaptive difficulty                                       │    │   │
+│   │  │  • Multi-target placement with occlusion handling                       │    │   │
+│   │  │  • Class-balancing with hard-example boosting                           │    │   │
+│   │  └────────┬────────────────────────────────────────────────────────────────┘    │   │
+│   │           │                                                                     │   │
+│   │           ▼                                                                     │   │
+│   │  ┌─────────────────┐                                                            │   │
 │   │  │ augment-checker │  Integrity validation before training                      │   │
 │   │  │ ─────────────── │  • H-matrix verification                                   │   │
 │   │  │ • Geometry QA   │  • Corner outlier detection                                │   │
 │   │  │ • Format check  │  • Label consistency                                       │   │
-│   │  └────────┬────────┘                                                             │   │
-│   └───────────┼──────────────────────────────────────────────────────────────────────┘   │
-│               │                                                                          │
-│               ▼                                                                          │
+│   │  └────────┬────────┘                                                            │   │
+│   └───────────┼─────────────────────────────────────────────────────────────────────┘   │
+│               │                                                                         │
+│               ▼                                                                         │
 │   ┌─────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                           TRAINING STAGE                                         │   │
-│   │                                                                                  │   │
+│   │                           TRAINING STAGE                                        │   │
+│   │                                                                                 │   │
 │   │  ┌─────────────────────────────────────────────────────────────────────────┐    │   │
-│   │  │                        detector-train                                      │    │   │
+│   │  │                        detector-train                                   │    │   │
 │   │  │ ─────────────────────────────────────────────────────────────────────── │    │   │
-│   │  │                                                                          │    │   │
+│   │  │                                                                         │    │   │
 │   │  │   YOLO OBB Student  ◄──────────────────  DINOv3 Teacher (frozen)        │    │   │
-│   │  │          │                                    │                          │    │   │
-│   │  │          │  ┌────────────────────────────────┐│                          │    │   │
-│   │  │          │  │      FEATURE DISTILLATION      ││                          │    │   │
-│   │  │          │  │ • Layer-wise feature alignment ││                          │    │   │
-│   │  │          │  │ • OBB-masked cosine distance   ││                          │    │   │
-│   │  │          │  │ • Two-stage curriculum         ││                          │    │   │
-│   │  │          │  │   - Stage A: Frozen backbone   ││                          │    │   │
-│   │  │          │  │   - Stage B: Full finetune     ││                          │    │   │
-│   │  │          │  └────────────────────────────────┘│                          │    │   │
-│   │  │          ▼                                    │                          │    │   │
-│   │  │   Checkpoints (best.pt, best_geo.pt)          │                          │    │   │
-│   │  │          │                                    │                          │    │   │
-│   │  │          └───▶  Periodic Eval (detector-grader)                            │    │   │
-│   │  └──────────────────────┬───────────────────────────────────────────────────┘    │   │
-│   └─────────────────────────┼────────────────────────────────────────────────────────┘   │
-│                             │                                                            │
-│                             ▼                                                            │
+│   │  │          │                                    │                         │    │   │
+│   │  │          │  ┌────────────────────────────────┐│                         │    │   │
+│   │  │          │  │      FEATURE DISTILLATION      ││                         │    │   │
+│   │  │          │  │ • Layer-wise feature alignment ││                         │    │   │
+│   │  │          │  │ • OBB-masked cosine distance   ││                         │    │   │
+│   │  │          │  │ • Two-stage curriculum         ││                         │    │   │
+│   │  │          │  │   - Stage A: Frozen backbone   ││                         │    │   │
+│   │  │          │  │   - Stage B: Full finetune     ││                         │    │   │
+│   │  │          │  └────────────────────────────────┘│                         │    │   │
+│   │  │          ▼                                    │                         │    │   │
+│   │  │   Checkpoints (best.pt, best_geo.pt)          │                         │    │   │
+│   │  │          │                                    │                         │    │   │
+│   │  │          └───▶  Periodic Eval (detector-grader)                         │    │   │
+│   │  └──────────────────────┬──────────────────────────────────────────────────┘    │   │
+│   └─────────────────────────┼───────────────────────────────────────────────────────┘   │
+│                             │                                                           │
+│                             ▼                                                           │
 │   ┌─────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                         EVALUATION STAGES                                        │   │
-│   │                                                                                  │   │
-│   │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐              │   │
-│   │  │ detector-infer  │───▶│ detector-grader │───▶│ detector-reviewer│              │   │
-│   │  │ ─────────────── │    │ ─────────────── │    │ ─────────────── │              │   │
-│   │  │ • Batch predict │    │ • 5-axis scoring│    │ • Qt GUI        │              │   │
-│   │  │ • YOLO OBB fmt  │    │ • IoU/Corner/   │    │ • GT vs Pred    │              │   │
-│   │  │ • Empty handling│    │   Angle/Center/ │    │   overlay       │              │   │
-│   │  │                 │    │   Shape         │    │ • Visual QA     │              │   │
-│   │  │                 │    │ • Hard example  │    │                 │              │   │
-│   │  │                 │    │   extraction    │    │                 │              │   │
-│   │  │                 │    │ • Grade reports │    │                 │              │   │
-│   │  │                 │    │   → curriculum  │    │                 │              │   │
-│   │  └─────────────────┘    └─────────────────┘    └─────────────────┘              │   │
+│   │                         EVALUATION STAGES                                       │   │
+│   │                                                                                 │   │
+│   │  ┌─────────────────┐    ┌─────────────────┐    ┌──────────────────┐             │   │
+│   │  │ detector-infer  │───▶│ detector-grader │───▶│ detector-reviewer│             │   │
+│   │  │ ─────────────── │    │ ─────────────── │    │ ──────────────── │             │   │
+│   │  │ • Batch predict │    │ • 5-axis scoring│    │ • Qt GUI         │             │   │
+│   │  │ • YOLO OBB fmt  │    │ • IoU/Corner/   │    │ • GT vs Pred     │             │   │
+│   │  │ • Empty handling│    │   Angle/Center/ │    │   overlay        │             │   │
+│   │  │                 │    │   Shape         │    │ • Visual QA      │             │   │
+│   │  │                 │    │ • Hard example  │    │                  │             │   │
+│   │  │                 │    │   extraction    │    │                  │             │   │
+│   │  │                 │    │ • Grade reports │    │                  │             │   │
+│   │  │                 │    │   → curriculum  │    │                  │             │   │
+│   │  └─────────────────┘    └─────────────────┘    └──────────────────┘             │   │
 │   └─────────────────────────────────────────────────────────────────────────────────┘   │
-│                                                                                          │
-│   INFRASTRUCTURE                                                                         │
+│                                                                                         │
+│   INFRASTRUCTURE                                                                        │
 │   ┌─────────────────┐  ┌─────────────────────────┐  ┌─────────────────────────┐         │
 │   │ pipeline-config │  │ pipeline-runtime-utils  │  │   pipeline-profile      │         │
 │   │ ─────────────── │  │ ─────────────────────── │  │ ─────────────────────── │         │
@@ -95,7 +95,7 @@ Production-grade pipeline for fine-tuning YOLO OBB (Oriented Bounding Box) detec
 │   │ • Path layout   │  │ • Seeding               │  │ • Resource monitoring   │         │
 │   │ • Validation    │  │ • Geometry utilities    │  │ • Bottleneck analysis   │         │
 │   └─────────────────┘  └─────────────────────────┘  └─────────────────────────┘         │
-│                                                                                          │
+│                                                                                         │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 

@@ -64,6 +64,7 @@ dependencies = [
     { name = "numpy" },
     { name = "opencv-python-headless" },
     { name = "pipeline-config" },
+    { name = "pipeline-runtime-utils" },
     { name = "pyside6" },
 ]
 
@@ -72,6 +73,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "opencv-python-headless", specifier = ">=4.10.0.84" },
     { name = "pipeline-config", editable = "packages/pipeline-config" },
+    { name = "pipeline-runtime-utils", editable = "packages/pipeline-runtime-utils" },
     { name = "pyside6", specifier = ">=6.7.0" },
 ]
 
@@ -1166,6 +1168,12 @@ requires-dist = [
 name = "pipeline-runtime-utils"
 version = "0.1.0"
 source = { editable = "packages/pipeline-runtime-utils" }
+dependencies = [
+    { name = "numpy" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "numpy", specifier = ">=2.1.0" }]
 
 [[package]]
 name = "platformdirs"

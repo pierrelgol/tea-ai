@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import json
 import os
 from dataclasses import asdict, dataclass
@@ -11,6 +12,7 @@ import tempfile
 import time
 from threading import Event, Thread
 from typing import Any
+import sys
 
 import psutil
 from tqdm import tqdm
@@ -107,7 +109,7 @@ def _run_stage(name: str, cmd: list[str], *, sample_gpu: bool, cwd: Path) -> Sta
     t = Thread(target=_runner, daemon=True)
     t.start()
 
-    output_lines: list[str] = []
+    output_lines: deque[str] = deque(maxlen=400)
     assert proc.stdout is not None
     for line in proc.stdout:
         output_lines.append(line)
@@ -117,7 +119,7 @@ def _run_stage(name: str, cmd: list[str], *, sample_gpu: bool, cwd: Path) -> Sta
 
     end = time.perf_counter()
     status = "ok" if rc == 0 else "error"
-    notes = None if rc == 0 else "".join(output_lines[-40:])
+    notes = None if rc == 0 else "".join(output_lines)
 
     return StageMetrics(
         stage=name,
@@ -153,6 +155,116 @@ def _build_profile_config(base_cfg: PipelineConfig, *, dataset: str, train_epoch
     return tmp
 
 
+def _resolve_baseline_report(
+    *,
+    compare_to: str | None,
+    cfg: PipelineConfig,
+) -> Path | None:
+    candidate = compare_to
+    if candidate is None:
+        raw = cfg.profile.get("baseline_run")
+        if isinstance(raw, str) and raw.strip():
+            candidate = raw.strip()
+    if not candidate:
+        return None
+
+    p = Path(candidate)
+    if p.exists():
+        if p.is_dir():
+            q = p / "profile" / "profile_report.json"
+            return q if q.exists() else None
+        return p
+
+    run_report = cfg.paths["artifacts_root"] / str(cfg.run["model_key"]) / "runs" / candidate / "profile" / "profile_report.json"
+    if run_report.exists():
+        return run_report
+    return None
+
+
+def _safe_delta(current: float | None, baseline: float | None) -> float | None:
+    if current is None or baseline is None:
+        return None
+    return float(current - baseline)
+
+
+def _build_profile_delta(current_report: dict[str, Any], baseline_report: dict[str, Any]) -> dict[str, Any]:
+    current_stage = {str(s["stage"]): s for s in current_report.get("stages", [])}
+    baseline_stage = {str(s["stage"]): s for s in baseline_report.get("stages", [])}
+    stage_delta: list[dict[str, Any]] = []
+    for stage in sorted(set(current_stage) | set(baseline_stage)):
+        cur = current_stage.get(stage, {})
+        base = baseline_stage.get(stage, {})
+        row = {
+            "stage": stage,
+            "duration_s_delta": _safe_delta(cur.get("duration_s"), base.get("duration_s")),
+            "cpu_percent_avg_delta": _safe_delta(cur.get("cpu_percent_avg"), base.get("cpu_percent_avg")),
+            "cpu_percent_max_delta": _safe_delta(cur.get("cpu_percent_max"), base.get("cpu_percent_max")),
+            "rss_mb_max_delta": _safe_delta(cur.get("rss_mb_max"), base.get("rss_mb_max")),
+            "gpu_util_percent_avg_delta": _safe_delta(cur.get("gpu_util_percent_avg"), base.get("gpu_util_percent_avg")),
+            "gpu_mem_mb_max_delta": _safe_delta(cur.get("gpu_mem_mb_max"), base.get("gpu_mem_mb_max")),
+        }
+        stage_delta.append(row)
+
+    cq = current_report.get("quality_metrics", {})
+    bq = baseline_report.get("quality_metrics", {})
+    quality_delta = {
+        "run_grade_0_100_delta": _safe_delta(cq.get("run_grade_0_100"), bq.get("run_grade_0_100")),
+        "precision_proxy_delta": _safe_delta(cq.get("precision_proxy"), bq.get("precision_proxy")),
+        "recall_proxy_delta": _safe_delta(cq.get("recall_proxy"), bq.get("recall_proxy")),
+        "miss_rate_proxy_delta": _safe_delta(cq.get("miss_rate_proxy"), bq.get("miss_rate_proxy")),
+    }
+
+    total_cur = current_report.get("total_duration_s")
+    total_base = baseline_report.get("total_duration_s")
+    total_delta = _safe_delta(total_cur, total_base)
+    total_delta_pct = None
+    if total_delta is not None and total_base not in (None, 0):
+        total_delta_pct = float((total_delta / float(total_base)) * 100.0)
+
+    return {
+        "total_duration_s_delta": total_delta,
+        "total_duration_pct_delta": total_delta_pct,
+        "stages_delta": stage_delta,
+        "quality_delta": quality_delta,
+    }
+
+
+def _evaluate_regression_gate(
+    *,
+    delta_payload: dict[str, Any],
+    profile_cfg: dict[str, Any],
+) -> list[str]:
+    gate = profile_cfg.get("regression_gate", {}) if isinstance(profile_cfg, dict) else {}
+    if not isinstance(gate, dict):
+        gate = {}
+
+    min_run_grade_delta = float(gate.get("min_run_grade_delta", 0.0))
+    max_precision_drop = float(gate.get("max_precision_drop", 0.02))
+    max_recall_drop = float(gate.get("max_recall_drop", 0.02))
+    max_miss_rate_increase = float(gate.get("max_miss_rate_increase", 0.02))
+    max_total_duration_increase_pct = float(gate.get("max_total_duration_increase_pct", 5.0))
+
+    fails: list[str] = []
+    qd = delta_payload.get("quality_delta", {})
+    run_grade_delta = qd.get("run_grade_0_100_delta")
+    if run_grade_delta is not None and float(run_grade_delta) < min_run_grade_delta:
+        fails.append(f"run_grade delta {run_grade_delta:.4f} < min {min_run_grade_delta:.4f}")
+    precision_delta = qd.get("precision_proxy_delta")
+    if precision_delta is not None and float(precision_delta) < -max_precision_drop:
+        fails.append(f"precision delta {precision_delta:.4f} < -{max_precision_drop:.4f}")
+    recall_delta = qd.get("recall_proxy_delta")
+    if recall_delta is not None and float(recall_delta) < -max_recall_drop:
+        fails.append(f"recall delta {recall_delta:.4f} < -{max_recall_drop:.4f}")
+    miss_delta = qd.get("miss_rate_proxy_delta")
+    if miss_delta is not None and float(miss_delta) > max_miss_rate_increase:
+        fails.append(f"miss_rate delta {miss_delta:.4f} > {max_miss_rate_increase:.4f}")
+
+    total_delta_pct = delta_payload.get("total_duration_pct_delta")
+    if total_delta_pct is not None and float(total_delta_pct) > max_total_duration_increase_pct:
+        fails.append(f"total_duration pct delta {total_delta_pct:.2f}% > {max_total_duration_increase_pct:.2f}%")
+    return fails
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Profile the tea-ai end-to-end pipeline")
     parser.add_argument("--config", type=Path, default=Path("config.json"))
@@ -160,6 +272,8 @@ def main() -> None:
     parser.add_argument("--train-epochs", type=int, default=None)
     parser.add_argument("--report-dir", type=Path, default=None)
     parser.add_argument("--no-gpu-sampling", action="store_true")
+    parser.add_argument("--compare-to", type=str, default=None)
+    parser.add_argument("--fail-on-regression", action="store_true")
     args = parser.parse_args()
 
     base_cfg = load_pipeline_config(args.config.resolve())
@@ -300,9 +414,61 @@ def main() -> None:
         ])
     report_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    print("status: ok")
+    baseline_report_path = _resolve_baseline_report(compare_to=args.compare_to, cfg=base_cfg)
+    delta_json_path: Path | None = None
+    delta_md_path: Path | None = None
+    regression_failures: list[str] = []
+    if baseline_report_path is not None and baseline_report_path.exists():
+        baseline_report = json.loads(baseline_report_path.read_text(encoding="utf-8"))
+        delta_payload = _build_profile_delta(report, baseline_report)
+        delta_payload["baseline_report_path"] = str(baseline_report_path)
+        delta_json_path = report_dir / "profile_delta.json"
+        delta_json_path.write_text(json.dumps(delta_payload, indent=2), encoding="utf-8")
+
+        delta_lines = [
+            "# Pipeline Profile Delta",
+            "",
+            f"- baseline_report: `{baseline_report_path}`",
+            f"- total_duration_s_delta: `{delta_payload.get('total_duration_s_delta')}`",
+            f"- total_duration_pct_delta: `{delta_payload.get('total_duration_pct_delta')}`",
+            "",
+            "## Stage Deltas",
+        ]
+        for row in delta_payload.get("stages_delta", []):
+            delta_lines.append(
+                f"- {row.get('stage')}: duration={row.get('duration_s_delta')}, cpu_avg={row.get('cpu_percent_avg_delta')}, "
+                f"cpu_max={row.get('cpu_percent_max_delta')}, rss={row.get('rss_mb_max_delta')}, "
+                f"gpu_avg={row.get('gpu_util_percent_avg_delta')}, gpu_mem={row.get('gpu_mem_mb_max_delta')}"
+            )
+        qd = delta_payload.get("quality_delta", {})
+        delta_lines.extend([
+            "",
+            "## Quality Deltas",
+            f"- run_grade_0_100_delta: {qd.get('run_grade_0_100_delta')}",
+            f"- precision_proxy_delta: {qd.get('precision_proxy_delta')}",
+            f"- recall_proxy_delta: {qd.get('recall_proxy_delta')}",
+            f"- miss_rate_proxy_delta: {qd.get('miss_rate_proxy_delta')}",
+        ])
+        delta_md_path = report_dir / "profile_delta.md"
+        delta_md_path.write_text("\n".join(delta_lines) + "\n", encoding="utf-8")
+
+        if args.fail_on_regression:
+            regression_failures = _evaluate_regression_gate(
+                delta_payload=delta_payload,
+                profile_cfg=base_cfg.profile,
+            )
+
+    print("status: error" if regression_failures else "status: ok")
     print(f"profile_report: {report_json}")
     print(f"profile_summary: {report_md}")
+    if delta_json_path is not None:
+        print(f"profile_delta: {delta_json_path}")
+    if delta_md_path is not None:
+        print(f"profile_delta_summary: {delta_md_path}")
+    if regression_failures:
+        for fail in regression_failures:
+            print(f"regression: {fail}")
+        sys.exit(2)
 
 
 if __name__ == "__main__":

@@ -1,27 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 import re
 
-import cv2
-import numpy as np
-from pipeline_runtime_utils import resolve_latest_weights_from_artifacts
-
-
-@dataclass(slots=True)
-class Label:
-    class_id: int
-    corners_norm: np.ndarray  # (4, 2)
-    confidence: float
-
-
-@dataclass(slots=True)
-class SampleRecord:
-    split: str
-    stem: str
-    image_path: Path | None
-    gt_label_path: Path | None
+from pipeline_runtime_utils import (
+    OBBLabel as Label,
+    SampleRecord,
+    image_shape_fast,
+    index_ground_truth,
+    load_obb_labels,
+    load_prediction_labels as _load_prediction_labels,
+    resolve_latest_weights_from_artifacts,
+)
 
 
 def sanitize_model_name(name: str) -> str:
@@ -30,73 +20,8 @@ def sanitize_model_name(name: str) -> str:
     return cleaned or "model"
 
 
-def parse_gt_line(line: str) -> Label:
-    parts = line.strip().split()
-    if len(parts) != 9:
-        raise ValueError("GT label must have 9 OBB fields")
-    class_id = int(parts[0])
-    vals = [float(x) for x in parts[1:]]
-    corners = np.array(vals, dtype=np.float32).reshape(4, 2)
-    return Label(class_id=class_id, corners_norm=corners, confidence=1.0)
-
-
-def parse_pred_line(line: str) -> Label:
-    parts = line.strip().split()
-    if len(parts) not in (9, 10):
-        raise ValueError("prediction label must have 9 (no conf) or 10 (with conf) OBB fields")
-    class_id = int(parts[0])
-    corners = np.array([float(x) for x in parts[1:9]], dtype=np.float32).reshape(4, 2)
-    conf = float(parts[9]) if len(parts) == 10 else 1.0
-    return Label(class_id=class_id, corners_norm=corners, confidence=conf)
-
-
 def load_labels(path: Path, *, is_prediction: bool, conf_threshold: float) -> list[Label]:
-    if not path.exists():
-        return []
-    out: list[Label] = []
-    parser = parse_pred_line if is_prediction else parse_gt_line
-    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            label = parser(line)
-        except Exception as exc:
-            raise ValueError(f"invalid OBB label at {path}:{line_no}: {exc}") from exc
-        if is_prediction and label.confidence < conf_threshold:
-            continue
-        out.append(label)
-    return out
-
-
-def index_ground_truth(dataset_root: Path) -> list[SampleRecord]:
-    records: list[SampleRecord] = []
-    for split in ("train", "val"):
-        img_dir = dataset_root / "images" / split
-        lab_dir = dataset_root / "labels" / split
-
-        stems: set[str] = set()
-        if img_dir.exists():
-            stems |= {p.stem for p in img_dir.iterdir() if p.is_file()}
-        if lab_dir.exists():
-            stems |= {p.stem for p in lab_dir.iterdir() if p.is_file() and p.suffix == ".txt"}
-
-        for stem in sorted(stems):
-            image_path = None
-            for ext in (".jpg", ".jpeg", ".png", ".bmp"):
-                p = img_dir / f"{stem}{ext}"
-                if p.exists():
-                    image_path = p
-                    break
-            gt = lab_dir / f"{stem}.txt"
-            records.append(
-                SampleRecord(
-                    split=split,
-                    stem=stem,
-                    image_path=image_path,
-                    gt_label_path=gt if gt.exists() else None,
-                )
-            )
-    return records
+    return load_obb_labels(path, is_prediction=is_prediction, conf_threshold=conf_threshold)
 
 
 def load_prediction_labels(
@@ -106,18 +31,17 @@ def load_prediction_labels(
     stem: str,
     conf_threshold: float,
 ) -> list[Label]:
-    p = predictions_root / model_name / "labels" / split / f"{stem}.txt"
-    return load_labels(p, is_prediction=True, conf_threshold=conf_threshold)
+    return _load_prediction_labels(
+        predictions_root=predictions_root,
+        model_name=model_name,
+        split=split,
+        stem=stem,
+        conf_threshold=conf_threshold,
+    )
 
 
 def image_shape(path: Path | None) -> tuple[int, int] | None:
-    if path is None:
-        return None
-    img = cv2.imread(str(path), cv2.IMREAD_COLOR)
-    if img is None:
-        return None
-    h, w = img.shape[:2]
-    return h, w
+    return image_shape_fast(path)
 
 
 def resolve_latest_weights(artifacts_root: Path) -> Path:

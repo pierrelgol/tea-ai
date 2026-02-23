@@ -227,22 +227,44 @@ def _calibrate_per_class_thresholds(
             weights_profile=weights_profile,
         )
 
+        affected_static_preds: list[tuple[CachedSample, list[Any], list[Any]]] = []
+        for s in affected_samples:
+            static_preds: list[Any] = []
+            class_preds: list[Any] = []
+            for p in s.pred_labels_all:
+                pid = int(p.class_id)
+                if pid == class_id:
+                    class_preds.append(p)
+                    continue
+                thr = float(base_trial.get(pid, base_threshold))
+                if float(p.confidence) >= thr:
+                    static_preds.append(p)
+            affected_static_preds.append((s, static_preds, class_preds))
+
         best_t = float(base_threshold)
         best_grade = -1.0
         for t in candidates:
-            trial = dict(base_trial)
-            trial[class_id] = float(t)
-            affected_rows = _score_cached_samples(
-                affected_samples,
-                per_class_thresholds=trial,
-                default_threshold=base_threshold,
-                match_iou_threshold=match_iou_threshold,
-                weights_profile=weights_profile,
-            )
+            t_val = float(t)
+            affected_rows: list[dict[str, Any]] = []
+            for s, static_preds, class_preds in affected_static_preds:
+                filtered = list(static_preds)
+                filtered.extend([p for p in class_preds if float(p.confidence) >= t_val])
+                affected_rows.append(
+                    score_sample(
+                        split=s.split,
+                        stem=s.stem,
+                        gt_labels=s.gt_labels,
+                        pred_labels=filtered,
+                        w=s.w,
+                        h=s.h,
+                        iou_threshold=match_iou_threshold,
+                        weights=weights_profile,
+                    )
+                )
             grade = float(aggregate_scores(unaffected_rows + affected_rows).get("run_grade_0_100", 0.0))
             if grade > best_grade:
                 best_grade = grade
-                best_t = float(t)
+                best_t = t_val
         thresholds[class_id] = best_t
     return thresholds
 

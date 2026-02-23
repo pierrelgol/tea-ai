@@ -19,9 +19,16 @@ class TrainConfig:
     epochs: int = 128
     imgsz: int = 512
     batch: int = 16
+    batch_mode: str = "auto_max"  # fixed|auto_max
+    batch_max: int = 64
+    batch_utilization_target: float = 0.92
+    oom_backoff_factor: float = 0.85
     workers: int = 16
+    workers_auto: bool = True
+    workers_max: int = 16
     patience: int = 30
     cache: str = "auto"
+    throughput_mode: str = "balanced"  # balanced|max_gpu
     amp: bool = True
     plots: bool = True
     tf32: bool = True
@@ -61,6 +68,7 @@ class TrainConfig:
     stage_a_distill_weight: float = 0.25
     stage_b_distill_weight: float = 0.08
     dino_viz_enabled: bool = True
+    dino_viz_mode: str = "final_only"  # off|interval|final_only
     dino_viz_every_n_epochs: int = 5
     dino_viz_max_samples: int = 1
 
@@ -75,6 +83,8 @@ class TrainConfig:
     wandb_log_every_epoch: bool = True
 
     eval_enabled: bool = True
+    periodic_eval_mode: str = "interval"  # off|interval|sparse
+    periodic_eval_sparse_epochs: int = 10
     eval_interval_epochs: int = 2
     eval_iou_threshold: float = 0.75
     eval_conf_threshold: float = 0.9
@@ -96,12 +106,24 @@ class TrainConfig:
             raise ValueError("imgsz must be >= 32")
         if self.batch < 1:
             raise ValueError("batch must be >= 1")
+        if self.batch_mode not in {"fixed", "auto_max"}:
+            raise ValueError("batch_mode must be one of: fixed, auto_max")
+        if self.batch_max < 1:
+            raise ValueError("batch_max must be >= 1")
+        if self.batch_utilization_target <= 0 or self.batch_utilization_target > 1:
+            raise ValueError("batch_utilization_target must be in (0,1]")
+        if self.oom_backoff_factor <= 0 or self.oom_backoff_factor >= 1:
+            raise ValueError("oom_backoff_factor must be in (0,1)")
         if self.workers < 0:
             raise ValueError("workers must be >= 0")
+        if self.workers_max < 1:
+            raise ValueError("workers_max must be >= 1")
         if self.patience < 0:
             raise ValueError("patience must be >= 0")
         if self.cache not in {"auto", "false", "ram", "disk"}:
             raise ValueError("cache must be one of: auto, false, ram, disk")
+        if self.throughput_mode not in {"balanced", "max_gpu"}:
+            raise ValueError("throughput_mode must be one of: balanced, max_gpu")
         if self.optimizer not in {"SGD", "AdamW", "auto"}:
             raise ValueError("optimizer must be one of: SGD, AdamW, auto")
         if self.lr0 <= 0:
@@ -134,12 +156,18 @@ class TrainConfig:
             raise ValueError("stage_a_distill_weight must be >= 0")
         if self.stage_b_distill_weight < 0:
             raise ValueError("stage_b_distill_weight must be >= 0")
+        if self.dino_viz_mode not in {"off", "interval", "final_only"}:
+            raise ValueError("dino_viz_mode must be one of: off, interval, final_only")
         if self.dino_viz_every_n_epochs < 1:
             raise ValueError("dino_viz_every_n_epochs must be >= 1")
         if self.dino_viz_max_samples < 1:
             raise ValueError("dino_viz_max_samples must be >= 1")
         if self.wandb_mode not in {"online", "offline", "auto"}:
             raise ValueError("wandb_mode must be one of: online, offline, auto")
+        if self.periodic_eval_mode not in {"off", "interval", "sparse"}:
+            raise ValueError("periodic_eval_mode must be one of: off, interval, sparse")
+        if self.periodic_eval_sparse_epochs < 1:
+            raise ValueError("periodic_eval_sparse_epochs must be >= 1")
         if self.eval_interval_epochs < 1:
             raise ValueError("eval_interval_epochs must be >= 1")
         if self.eval_iou_threshold < 0 or self.eval_iou_threshold > 1:

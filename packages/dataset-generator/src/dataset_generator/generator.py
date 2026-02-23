@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import replace
 from dataclasses import dataclass
 import json
@@ -21,7 +22,6 @@ from .geometry import (
 from .homography import HomographyParams, sample_valid_homography
 from .io import (
     CanonicalTarget,
-    audit_background_split_overlap,
     enforce_disjoint_background_splits,
     load_backgrounds_by_split,
     load_canonical_targets,
@@ -49,6 +49,7 @@ class PlacedTarget:
     projected_corners_px: np.ndarray
     projected_corners_px_raw: np.ndarray
     projected_corners_norm: np.ndarray
+    warped_target: np.ndarray
     warped_mask: np.ndarray
     class_id_exported: int
     placement: dict[str, Any]
@@ -307,6 +308,7 @@ def _try_place_target(
         projected_corners_px=projected_corners_rect,
         projected_corners_px_raw=projected_corners_raw,
         projected_corners_norm=projected_corners_norm,
+        warped_target=warped_target,
         warped_mask=warped_mask,
         class_id_exported=class_id_exported,
         placement=placement,
@@ -330,6 +332,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
         target_indices_by_class.setdefault(int(target.class_id_local), []).append(idx)
     hard_boost_raw = _load_hard_class_boosts(config.hard_examples_path)
     class_ids = sorted(target_indices_by_class.keys())
+    class_ids_np = np.array(class_ids, dtype=np.int32) if class_ids else np.zeros((0,), dtype=np.int32)
     class_weights = np.ones((len(class_ids),), dtype=np.float64)
     if class_ids:
         frequencies = np.array([len(target_indices_by_class[cid]) for cid in class_ids], dtype=np.float64)
@@ -346,34 +349,15 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
         class_weights = class_weights / max(float(np.sum(class_weights)), 1e-9)
 
     backgrounds_by_split = load_backgrounds_by_split(config.background_splits)
-    original_audit = audit_background_split_overlap(backgrounds_by_split)
-    if original_audit.get("overlap_count", 0) > 0:
-        backgrounds_by_split, enforced_audit = enforce_disjoint_background_splits(backgrounds_by_split)
-        split_audit = {
-            "enforced": True,
-            "original": original_audit,
-            "post_enforcement": enforced_audit,
-            "overlap_count": int(enforced_audit.get("overlap_count", 0)),
-        }
-    else:
-        split_audit = {
-            "enforced": False,
-            "original": original_audit,
-            "post_enforcement": {
-                "original_train_count": len(backgrounds_by_split.get("train", [])),
-                "original_val_count": len(backgrounds_by_split.get("val", [])),
-                "original_overlap_count": 0,
-                "reassigned_overlap_to_train_count": 0,
-                "reassigned_overlap_to_val_count": 0,
-                "final_train_count": len(backgrounds_by_split.get("train", [])),
-                "final_val_count": len(backgrounds_by_split.get("val", [])),
-                "policy": "none_required",
-                "overlap_count": 0,
-            },
-            "overlap_count": 0,
-        }
+    backgrounds_by_split, enforced_audit = enforce_disjoint_background_splits(backgrounds_by_split)
+    split_audit = {
+        "enforced": int(enforced_audit.get("original_overlap_count", 0)) > 0,
+        "post_enforcement": enforced_audit,
+        "overlap_count": int(enforced_audit.get("overlap_count", 0)),
+    }
     write_metadata(config.output_root / "split_audit.json", split_audit)
-    target_images_cache: dict[str, np.ndarray] = {}
+    target_images_cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
+    max_target_cache_items = 256
 
     _ensure_output_layout(config.output_root)
     write_augmented_classes(config.output_root, target_classes, config.class_offset_base)
@@ -421,7 +405,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                     placed_score = -1.0
                     for _attempt in range(config.max_attempts):
                         if class_ids:
-                            picked_class = int(rng.choice(np.array(class_ids, dtype=np.int32), p=class_weights))
+                            picked_class = int(rng.choice(class_ids_np, p=class_weights))
                             candidates = target_indices_by_class.get(picked_class, [])
                             if candidates:
                                 target = targets[int(candidates[int(rng.integers(0, len(candidates)))])]
@@ -435,6 +419,10 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                             if image is None:
                                 break
                             target_images_cache[key] = image
+                            if len(target_images_cache) > max_target_cache_items:
+                                target_images_cache.popitem(last=False)
+                        else:
+                            target_images_cache.move_to_end(key, last=True)
                         target_image = target_images_cache[key]
                         candidate = _try_place_target(
                             background=composited,
@@ -463,20 +451,13 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
                     if placed_target is None:
                         continue
 
-                    warped_target, warped_mask = warp_target_and_mask(
-                        target=target_images_cache[str(placed_target.target.image_path)],
-                        canonical_corners_px=placed_target.target.canonical_corners_px,
-                        H=np.array(placed_target.placement["H"], dtype=np.float64),
-                        out_w=bg_w,
-                        out_h=bg_h,
-                    )
                     composited = blend_layer(
                         background=composited,
-                        warped_target=warped_target,
-                        warped_mask=warped_mask,
+                        warped_target=placed_target.warped_target,
+                        warped_mask=placed_target.warped_mask,
                         feather_px=5,
                     )
-                    occupancy_mask = occupancy_mask | (warped_mask > 0)
+                    occupancy_mask = occupancy_mask | (placed_target.warped_mask > 0)
                     placed.append(placed_target)
                     angle_deg = float(
                         placed_target.placement.get(

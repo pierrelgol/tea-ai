@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from pipeline_runtime_utils import corners_norm_to_px, load_obb_labels, parse_obb_line
 
 
 @dataclass(slots=True)
@@ -14,48 +15,40 @@ class YoloLabel:
 
 
 def parse_yolo_line(line: str, *, is_prediction: bool = False) -> YoloLabel:
-    parts = line.strip().split()
-    expected = 10 if is_prediction else 9
-    if len(parts) != expected:
-        if is_prediction:
-            raise ValueError("YOLO prediction line must have 10 OBB fields: class x1 y1 x2 y2 x3 y3 x4 y4 conf")
-        raise ValueError("YOLO label line must have 9 OBB fields: class x1 y1 x2 y2 x3 y3 x4 y4")
-
-    class_id = int(parts[0])
-    vals = [float(x) for x in parts[1:]]
-    coords = vals[:8]
-    corners = np.array(coords, dtype=np.float32).reshape(4, 2)
-    return YoloLabel(class_id=class_id, corners_norm=corners, format_name="obb")
+    parsed = parse_obb_line(line, is_prediction=is_prediction)
+    return YoloLabel(class_id=parsed.class_id, corners_norm=parsed.corners_norm, format_name="obb")
 
 
 def load_yolo_labels(path, *, is_prediction: bool = False, conf_threshold: float = 0.0) -> list[YoloLabel]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    if not lines:
+    if path.exists() and not path.read_text(encoding="utf-8").strip():
         if is_prediction:
             raise ValueError(f"Empty label file: {path}")
         return []
-    out: list[YoloLabel] = []
-    try:
-        if not is_prediction:
-            for line_no, line in enumerate(lines, start=1):
-                if not line.strip():
-                    continue
-                out.append(parse_yolo_line(line, is_prediction=False))
-            return out
+    if not is_prediction:
+        parsed = load_obb_labels(
+            path,
+            is_prediction=False,
+            conf_threshold=conf_threshold,
+            require_nonempty_predictions=False,
+        )
+        return [YoloLabel(class_id=p.class_id, corners_norm=p.corners_norm, format_name="obb") for p in parsed]
 
-        for line_no, line in enumerate(lines, start=1):
-            parts = line.strip().split()
-            if len(parts) != 10:
-                continue
-            conf = float(parts[9])
-            if conf < conf_threshold:
-                continue
-            out.append(parse_yolo_line(line, is_prediction=True))
-        if not out:
-            raise ValueError("No prediction above confidence threshold")
-        return out
-    except Exception as exc:
-        raise ValueError(f"invalid OBB label at {path}: {exc}") from exc
+    if not path.exists():
+        return []
+    parsed = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        parts = line.strip().split()
+        if len(parts) != 10:
+            continue
+        label = parse_obb_line(line, is_prediction=True)
+        if float(label.confidence) < float(conf_threshold):
+            continue
+        parsed.append(label)
+    if not parsed:
+        raise ValueError("No prediction above confidence threshold")
+    return [YoloLabel(class_id=p.class_id, corners_norm=p.corners_norm, format_name="obb") for p in parsed]
 
 
 def load_yolo_label(path, *, is_prediction: bool = False, conf_threshold: float = 0.0) -> YoloLabel:
@@ -92,10 +85,7 @@ def validate_yolo_label(label: YoloLabel, eps: float = 1e-6) -> list[str]:
 
 
 def label_to_pixel_corners(label: YoloLabel, image_w: int, image_h: int) -> np.ndarray:
-    out = label.corners_norm.astype(np.float64).copy()
-    out[:, 0] *= image_w
-    out[:, 1] *= image_h
-    return out.astype(np.float32)
+    return corners_norm_to_px(label.corners_norm, image_w, image_h)
 
 
 def polygon_iou(a: np.ndarray, b: np.ndarray) -> float:

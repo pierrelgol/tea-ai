@@ -132,7 +132,8 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
 
     train = _expect_dict(payload.get("train", {}), "train")
     _expect_keys(train, {
-        "epochs", "imgsz", "batch", "workers", "patience", "cache", "device",
+        "epochs", "imgsz", "batch", "batch_mode", "batch_max", "batch_utilization_target", "oom_backoff_factor",
+        "workers", "workers_auto", "workers_max", "patience", "cache", "throughput_mode", "device",
         "optimizer", "lr0", "lrf", "weight_decay", "warmup_epochs", "cos_lr",
         "close_mosaic", "mosaic", "mixup", "degrees", "translate", "scale", "shear", "perspective",
         "hsv_h", "hsv_s", "hsv_v", "fliplr", "flipud", "copy_paste", "multi_scale", "freeze",
@@ -140,13 +141,14 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
         "dino_root", "dino_distill_warmup_epochs", "dino_distill_layers", "dino_distill_channels",
         "dino_distill_object_weight", "dino_distill_background_weight",
         "stage_a_ratio", "stage_a_freeze", "stage_a_distill_weight", "stage_b_distill_weight",
-        "dino_viz_enabled", "dino_viz_every_n_epochs", "dino_viz_max_samples",
+        "dino_viz_enabled", "dino_viz_mode", "dino_viz_every_n_epochs", "dino_viz_max_samples",
         "wandb_enabled", "wandb_project", "wandb_entity", "wandb_run_name", "wandb_tags", "wandb_notes",
         "wandb_mode", "wandb_log_system_metrics", "wandb_log_every_epoch",
-        "eval_enabled", "eval_interval_epochs", "eval_iou_threshold", "eval_conf_threshold",
+        "eval_enabled", "periodic_eval_mode", "periodic_eval_sparse_epochs", "eval_interval_epochs", "eval_iou_threshold", "eval_conf_threshold",
         "eval_viz_samples", "eval_viz_split",
     }, "train", required={
-        "epochs", "imgsz", "batch", "workers", "patience", "cache", "device",
+        "epochs", "imgsz", "batch", "batch_mode", "batch_max", "batch_utilization_target", "oom_backoff_factor",
+        "workers", "workers_auto", "workers_max", "patience", "cache", "throughput_mode", "device",
         "optimizer", "lr0", "lrf", "weight_decay", "warmup_epochs", "cos_lr",
         "close_mosaic", "mosaic", "mixup", "degrees", "translate", "scale", "shear", "perspective",
         "hsv_h", "hsv_s", "hsv_v", "fliplr", "flipud", "copy_paste", "multi_scale", "freeze",
@@ -154,10 +156,10 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
         "dino_root", "dino_distill_warmup_epochs", "dino_distill_layers", "dino_distill_channels",
         "dino_distill_object_weight", "dino_distill_background_weight",
         "stage_a_ratio", "stage_a_freeze", "stage_a_distill_weight", "stage_b_distill_weight",
-        "dino_viz_enabled", "dino_viz_every_n_epochs", "dino_viz_max_samples",
+        "dino_viz_enabled", "dino_viz_mode", "dino_viz_every_n_epochs", "dino_viz_max_samples",
         "wandb_enabled", "wandb_project", "wandb_entity", "wandb_run_name", "wandb_tags", "wandb_notes",
         "wandb_mode", "wandb_log_system_metrics", "wandb_log_every_epoch",
-        "eval_enabled", "eval_interval_epochs", "eval_iou_threshold", "eval_conf_threshold",
+        "eval_enabled", "periodic_eval_mode", "periodic_eval_sparse_epochs", "eval_interval_epochs", "eval_iou_threshold", "eval_conf_threshold",
         "eval_viz_samples", "eval_viz_split",
     })
 
@@ -199,10 +201,23 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
     profile = _expect_dict(payload.get("profile", {}), "profile")
     _expect_keys(
         profile,
-        {"dataset", "train_epochs", "enable_gpu_sampling"},
+        {"dataset", "train_epochs", "enable_gpu_sampling", "baseline_run", "regression_gate"},
         "profile",
         required={"dataset", "train_epochs", "enable_gpu_sampling"},
     )
+    if "regression_gate" in profile:
+        gate = _expect_dict(profile.get("regression_gate", {}), "profile.regression_gate")
+        _expect_keys(
+            gate,
+            {
+                "min_run_grade_delta",
+                "max_precision_drop",
+                "max_recall_drop",
+                "max_miss_rate_increase",
+                "max_total_duration_increase_pct",
+            },
+            "profile.regression_gate",
+        )
 
     paths_norm = {
         "dataset_root": dataset_root,

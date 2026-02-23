@@ -29,6 +29,9 @@ class DinoDistillConfig:
     object_weight: float
     background_weight: float
     viz_enabled: bool
+    viz_mode: str
+    viz_every_n_epochs: int
+    total_epochs: int
     viz_max_samples: int
 
 
@@ -58,6 +61,10 @@ class DinoOBBTrainer(OBBTrainer):
         self._dino_stage_b_weight = max(0.0, float(self._dino_cfg.stage_b_weight))
         self._dino_warmup_epochs = max(0, int(self._dino_cfg.warmup_epochs))
         self._dino_viz_enabled = bool(self._dino_cfg.viz_enabled)
+        self._dino_viz_mode = str(self._dino_cfg.viz_mode)
+        self._dino_viz_every_n_epochs = max(1, int(self._dino_cfg.viz_every_n_epochs))
+        self._dino_total_epochs = max(1, int(self._dino_cfg.total_epochs))
+        self._dino_viz_capture_epoch = False
         self._dino_viz_max_samples = max(1, int(self._dino_cfg.viz_max_samples))
         self._dino_active_weight = 0.0
         self._dino_last_weight = 0.0
@@ -144,13 +151,24 @@ class DinoOBBTrainer(OBBTrainer):
             layer_obj_losses: list[torch.Tensor] = []
             layer_bg_losses: list[torch.Tensor] = []
             signal_maps: list[torch.Tensor] = []
+            mask_cache: dict[tuple[int, int], tuple[torch.Tensor, torch.Tensor]] = {}
+
+            def _get_masks(hw: tuple[int, int], dev: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+                cached = mask_cache.get(hw)
+                if cached is not None:
+                    return cached
+                obj = _build_object_mask(batch, hw, dev)
+                bg = 1.0 - obj
+                mask_cache[hw] = (obj, bg)
+                return obj, bg
+
             viz_obj_mask: torch.Tensor | None = None
             sample_count = 0
-            if trainer._dino_viz_enabled:
+            if trainer._dino_viz_enabled and trainer._dino_viz_capture_epoch:
                 sample_count = min(int(batch["img"].shape[0]), trainer._dino_viz_max_samples)
                 if sample_count > 0:
                     teacher_hw = (int(teacher_map.shape[-2]), int(teacher_map.shape[-1]))
-                    viz_obj_mask = _build_object_mask(batch, teacher_hw, teacher_map.device)
+                    viz_obj_mask, _ = _get_masks(teacher_hw, teacher_map.device)
 
             for layer_idx in trainer._dino_layers:
                 if layer_idx not in trainer._dino_feature_cache:
@@ -172,20 +190,16 @@ class DinoOBBTrainer(OBBTrainer):
                     mode="nearest",
                 )
 
-                sproj = F.normalize(smap.flatten(2), dim=1)
-                tproj = F.normalize(tmap.flatten(2), dim=1)
-                cos_dist = 1.0 - (sproj * tproj).sum(dim=1, keepdim=True)  # Bx1xHW
-
-                obj_mask = _build_object_mask(batch, smap.shape[-2:], smap.device)
-                bg_mask = 1.0 - obj_mask
+                cos_dist = 1.0 - F.cosine_similarity(smap, tmap, dim=1).unsqueeze(1)  # Bx1xHxW
+                obj_mask, bg_mask = _get_masks((int(smap.shape[-2]), int(smap.shape[-1])), smap.device)
 
                 obj_den = obj_mask.sum().clamp_min(1.0)
                 bg_den = bg_mask.sum().clamp_min(1.0)
-                obj_loss = (cos_dist * obj_mask.flatten(2)).sum() / obj_den
-                bg_loss = (cos_dist * bg_mask.flatten(2)).sum() / bg_den
+                obj_loss = (cos_dist * obj_mask).sum() / obj_den
+                bg_loss = (cos_dist * bg_mask).sum() / bg_den
                 weighted = obj_weight * obj_loss + bg_weight * bg_loss
                 signal_map = (
-                    cos_dist.view(cos_dist.shape[0], *smap.shape[-2:])
+                    cos_dist[:, 0]
                     * (obj_weight * obj_mask[:, 0] + bg_weight * bg_mask[:, 0])
                 )
                 signal_maps.append(signal_map)
@@ -250,6 +264,18 @@ class DinoOBBTrainer(OBBTrainer):
                 weight_scale = min(1.0, float(epoch_idx + 1) / float(warmup))
             base_weight = cb_trainer._dino_stage_a_weight if in_stage_a else cb_trainer._dino_stage_b_weight
             cb_trainer._dino_active_weight = base_weight * weight_scale
+            if cb_trainer._dino_viz_enabled:
+                if cb_trainer._dino_viz_mode == "off":
+                    cb_trainer._dino_viz_capture_epoch = False
+                elif cb_trainer._dino_viz_mode == "final_only":
+                    cb_trainer._dino_viz_capture_epoch = (epoch_idx + 1) == cb_trainer._dino_total_epochs
+                else:
+                    cb_trainer._dino_viz_capture_epoch = (
+                        (epoch_idx + 1) == cb_trainer._dino_total_epochs
+                        or ((epoch_idx + 1) % cb_trainer._dino_viz_every_n_epochs == 0)
+                    )
+            else:
+                cb_trainer._dino_viz_capture_epoch = False
 
             if cb_trainer._dino_stage_a_active and cb_trainer._dino_stage_a_prefixes:
                 base_model = unwrap_model(cb_trainer.model)

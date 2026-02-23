@@ -20,17 +20,20 @@ def _minimal_config_with_optional_sections() -> dict:
         "dataset": {"name": "coco1024", "augmented_subdir": "augmented", "splits": ["train", "val"]},
         "generator": {"seed": 42},
         "train": {
-            "epochs": 1, "imgsz": 64, "batch": 1, "workers": 0, "patience": 1, "cache": "auto", "device": "cpu",
+            "epochs": 1, "imgsz": 64, "batch": 1, "batch_mode": "fixed", "batch_max": 2, "batch_utilization_target": 0.9,
+            "oom_backoff_factor": 0.85, "workers": 0, "workers_auto": False, "workers_max": 4, "patience": 1,
+            "cache": "auto", "throughput_mode": "balanced", "device": "cpu",
             "optimizer": "AdamW", "lr0": 0.001, "lrf": 0.01, "weight_decay": 0.0, "warmup_epochs": 0.0, "cos_lr": False,
             "close_mosaic": 0, "mosaic": 0.0, "mixup": 0.0, "degrees": 0.0, "translate": 0.0, "scale": 0.0, "shear": 0.0,
             "perspective": 0.0, "hsv_h": 0.0, "hsv_s": 0.0, "hsv_v": 0.0, "fliplr": 0.0, "flipud": 0.0, "copy_paste": 0.0,
             "multi_scale": False, "freeze": None, "amp": False, "plots": False, "tf32": False, "cudnn_benchmark": False,
             "dino_root": "dinov3", "dino_distill_warmup_epochs": 0, "dino_distill_layers": [1], "dino_distill_channels": 8,
             "dino_distill_object_weight": 0.0, "dino_distill_background_weight": 0.0, "stage_a_ratio": 0.5, "stage_a_freeze": 0,
-            "stage_a_distill_weight": 0.0, "stage_b_distill_weight": 0.0, "dino_viz_enabled": False,
+            "stage_a_distill_weight": 0.0, "stage_b_distill_weight": 0.0, "dino_viz_enabled": False, "dino_viz_mode": "off",
             "dino_viz_every_n_epochs": 1, "dino_viz_max_samples": 1, "wandb_enabled": False, "wandb_project": "p",
             "wandb_entity": None, "wandb_run_name": None, "wandb_tags": [], "wandb_notes": None, "wandb_mode": "offline",
-            "wandb_log_system_metrics": False, "wandb_log_every_epoch": False, "eval_enabled": False, "eval_interval_epochs": 1,
+            "wandb_log_system_metrics": False, "wandb_log_every_epoch": False, "eval_enabled": False,
+            "periodic_eval_mode": "off", "periodic_eval_sparse_epochs": 10, "eval_interval_epochs": 1,
             "eval_iou_threshold": 0.5, "eval_conf_threshold": 0.5, "eval_viz_samples": 0, "eval_viz_split": "val"
         },
         "infer": {
@@ -49,7 +52,19 @@ def _minimal_config_with_optional_sections() -> dict:
         },
         "review": {"split": "val", "conf_threshold": 0.25},
         "checks": {"outlier_threshold_px": 2.0, "debug_overlays_per_split": 10, "gui": False, "seed": 42},
-        "profile": {"dataset": "coco128", "train_epochs": 50, "enable_gpu_sampling": False},
+        "profile": {
+            "dataset": "coco128",
+            "train_epochs": 50,
+            "enable_gpu_sampling": False,
+            "baseline_run": "profile-20260223-193528",
+            "regression_gate": {
+                "min_run_grade_delta": 0.0,
+                "max_precision_drop": 0.02,
+                "max_recall_drop": 0.02,
+                "max_miss_rate_increase": 0.02,
+                "max_total_duration_increase_pct": 5.0,
+            },
+        },
     }
 
 

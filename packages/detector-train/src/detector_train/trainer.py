@@ -18,8 +18,13 @@ from .data_yaml import write_data_yaml
 from .dino_viz import save_dino_visualizations
 from .dino_trainer import DinoDistillConfig, DinoOBBTrainer
 from .wandb_logger import finish_wandb, init_wandb, log_wandb
-from detector_grader.data import index_ground_truth, load_labels, load_prediction_labels
-from pipeline_runtime_utils import corners_norm_to_px, resolve_device
+from pipeline_runtime_utils import (
+    corners_norm_to_px,
+    index_ground_truth,
+    load_obb_labels,
+    load_prediction_labels,
+    resolve_device,
+)
 
 
 def _configure_torch_runtime(config: TrainConfig) -> None:
@@ -78,6 +83,36 @@ def _resolve_cache_mode(requested: str, dataset_root: Path) -> str | bool:
     if available > 0 and dataset_bytes * 3 <= available:
         return "ram"
     return "disk"
+
+
+def _resolve_workers(config: TrainConfig) -> int:
+    base = max(0, int(config.workers))
+    if not bool(config.workers_auto):
+        return base
+    cpu = os.cpu_count() or 4
+    reserve = 2 if cpu > 4 else 1
+    auto = max(1, cpu - reserve)
+    auto = min(auto, int(config.workers_max))
+    if str(config.throughput_mode) == "max_gpu":
+        return auto
+    return min(auto, max(1, base)) if base > 0 else auto
+
+
+def _initial_batch_for_mode(config: TrainConfig) -> int:
+    base = max(1, int(config.batch))
+    if str(config.batch_mode) != "auto_max":
+        return base
+    cap = max(1, int(config.batch_max))
+    target = float(np.clip(float(config.batch_utilization_target), 0.5, 1.0))
+    if str(config.throughput_mode) == "max_gpu":
+        return max(base, min(cap, int(round(cap * target))))
+    growth = 1.0 + 0.5 * (target - 0.5)
+    return min(cap, max(base, int(round(base * growth))))
+
+
+def _is_cuda_oom(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "out of memory" in msg and "cuda" in msg
 
 
 def _json_safe(obj):
@@ -204,11 +239,11 @@ def _extract_last_metrics(results_csv: Path) -> dict[str, float]:
 
     with results_csv.open("r", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        rows = list(reader)
-    if not rows:
+        raw_row: dict[str, str] | None = None
+        for row in reader:
+            raw_row = row
+    if not raw_row:
         return {}
-
-    raw_row = rows[-1]
     out: dict[str, float] = {}
     speed_vals: list[float] = []
 
@@ -339,6 +374,8 @@ def _write_eval_visual_artifacts(
     epoch: int,
     selected_records,
     gt_cache: dict[Path, list[Any]],
+    image_cache: dict[str, np.ndarray],
+    gt_overlay_cache: dict[str, np.ndarray],
 ) -> dict[str, Any]:
     if config.eval_viz_samples <= 0:
         return {"enabled": False, "reason": "eval_viz_samples=0"}
@@ -358,7 +395,9 @@ def _write_eval_visual_artifacts(
 
     rows: list[dict[str, Any]] = []
     for rec in selected_records:
-        image = cv2.imread(str(rec.image_path), cv2.IMREAD_COLOR)
+        if rec.image_path is None:
+            continue
+        image = image_cache.get(rec.stem)
         if image is None:
             continue
 
@@ -371,7 +410,10 @@ def _write_eval_visual_artifacts(
             conf_threshold=float(config.eval_conf_threshold),
         )
 
-        gt_only = _draw_label_set(image, gt, color=(0, 255, 0), tag="GT")
+        gt_only = gt_overlay_cache.get(rec.stem)
+        if gt_only is None:
+            gt_only = _draw_label_set(image, gt, color=(0, 255, 0), tag="GT")
+            gt_overlay_cache[rec.stem] = gt_only
         pred_only = _draw_label_set(image, preds, color=(0, 0, 255), tag="PR")
         panel = _draw_label_set(gt_only, preds, color=(0, 0, 255), tag="PR")
 
@@ -416,6 +458,8 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
     _configure_torch_runtime(config)
     device = resolve_device(config.device)
     cache_mode = _resolve_cache_mode(config.cache, config.dataset_root)
+    workers_effective = _resolve_workers(config)
+    batch_requested = _initial_batch_for_mode(config)
     project_dir = config.project if config.project.is_absolute() else (Path.cwd() / config.project)
     project_dir = project_dir.resolve()
 
@@ -437,11 +481,18 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "model": config.model,
         "epochs": config.epochs,
         "imgsz": config.imgsz,
-        "batch": config.batch,
+        "batch": batch_requested,
         "device": device,
         "seed": config.seed,
-        "workers": config.workers,
+        "workers": workers_effective,
         "cache": cache_mode,
+        "throughput_mode": config.throughput_mode,
+        "batch_mode": config.batch_mode,
+        "batch_max": config.batch_max,
+        "batch_utilization_target": config.batch_utilization_target,
+        "oom_backoff_factor": config.oom_backoff_factor,
+        "workers_auto": config.workers_auto,
+        "workers_max": config.workers_max,
         "cache_requested": config.cache,
         "patience": config.patience,
         "amp": config.amp,
@@ -481,25 +532,40 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "stage_a_distill_weight": config.stage_a_distill_weight,
         "stage_b_distill_weight": config.stage_b_distill_weight,
         "dino_viz_enabled": config.dino_viz_enabled,
+        "dino_viz_mode": config.dino_viz_mode,
         "dino_viz_every_n_epochs": config.dino_viz_every_n_epochs,
         "dino_viz_max_samples": config.dino_viz_max_samples,
         "classes_count": len(names),
         "wandb_log_every_epoch": config.wandb_log_every_epoch,
         "wandb_log_system_metrics": config.wandb_log_system_metrics,
+        "periodic_eval_mode": config.periodic_eval_mode,
+        "periodic_eval_sparse_epochs": config.periodic_eval_sparse_epochs,
     }
     eval_viz_selected_records: list[Any] = []
     eval_viz_gt_cache: dict[Path, list[Any]] = {}
+    eval_viz_image_cache: dict[str, np.ndarray] = {}
+    eval_viz_gt_overlay_cache: dict[str, np.ndarray] = {}
     if config.eval_viz_samples > 0:
         split = str(config.eval_viz_split)
         records = [r for r in index_ground_truth(config.dataset_root) if r.split == split and r.image_path is not None]
         eval_viz_selected_records = sorted(records, key=lambda r: r.stem)[: int(config.eval_viz_samples)]
         for rec in eval_viz_selected_records:
+            image = cv2.imread(str(rec.image_path), cv2.IMREAD_COLOR) if rec.image_path is not None else None
+            if image is None:
+                continue
+            eval_viz_image_cache[rec.stem] = image
             if rec.gt_label_path is None:
                 continue
             if rec.gt_label_path not in eval_viz_gt_cache:
-                eval_viz_gt_cache[rec.gt_label_path] = load_labels(
+                eval_viz_gt_cache[rec.gt_label_path] = load_obb_labels(
                     rec.gt_label_path, is_prediction=False, conf_threshold=0.0
                 )
+            eval_viz_gt_overlay_cache[rec.stem] = _draw_label_set(
+                image,
+                eval_viz_gt_cache.get(rec.gt_label_path, []),
+                color=(0, 255, 0),
+                tag="GT",
+            )
 
     run_name = config.wandb_run_name or config.name
     wandb_run, wandb_state = init_wandb(
@@ -553,11 +619,14 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             if config.wandb_log_every_epoch:
                 _log_step_payload(current_epoch, _extract_epoch_metrics(trainer))
 
-            if config.dino_viz_enabled:
-                should_save_viz = (
-                    current_epoch == config.epochs
-                    or current_epoch % config.dino_viz_every_n_epochs == 0
-                )
+            if config.dino_viz_enabled and config.dino_viz_mode != "off":
+                if config.dino_viz_mode == "final_only":
+                    should_save_viz = current_epoch == config.epochs
+                else:
+                    should_save_viz = (
+                        current_epoch == config.epochs
+                        or current_epoch % config.dino_viz_every_n_epochs == 0
+                    )
                 if should_save_viz:
                     snapshot = getattr(trainer, "_dino_viz_snapshot", None)
                     if snapshot is not None:
@@ -586,13 +655,16 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                                 }
                             )
 
-            if not config.eval_enabled:
+            if not config.eval_enabled or config.periodic_eval_mode == "off":
                 return
             if current_epoch == last_eval_epoch:
                 return
 
             warmup_done = current_epoch >= int(max(1, round(config.warmup_epochs)))
-            should_eval = ((warmup_done and current_epoch % config.eval_interval_epochs == 0) or (current_epoch == config.epochs))
+            if config.periodic_eval_mode == "sparse":
+                should_eval = ((warmup_done and current_epoch % config.periodic_eval_sparse_epochs == 0) or (current_epoch == config.epochs))
+            else:
+                should_eval = ((warmup_done and current_epoch % config.eval_interval_epochs == 0) or (current_epoch == config.epochs))
             if not should_eval:
                 return
 
@@ -612,6 +684,8 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                     epoch=current_epoch,
                     selected_records=eval_viz_selected_records,
                     gt_cache=eval_viz_gt_cache,
+                    image_cache=eval_viz_image_cache,
+                    gt_overlay_cache=eval_viz_gt_overlay_cache,
                 )
                 periodic_eval.append(eval_result)
                 grade = eval_result.get("grading", {}).get("aggregate", {}).get("run_grade_0_100")
@@ -639,11 +713,11 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         train_kwargs: dict[str, Any] = {
             "data": str(data_yaml_path),
             "imgsz": config.imgsz,
-            "batch": config.batch,
+            "batch": batch_requested,
             "device": device,
             "project": str(project_dir),
             "seed": config.seed,
-            "workers": config.workers,
+            "workers": workers_effective,
             "patience": config.patience,
             "cache": cache_mode,
             "amp": config.amp,
@@ -688,7 +762,10 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                     channels=int(config.dino_distill_channels),
                     object_weight=config.dino_distill_object_weight,
                     background_weight=config.dino_distill_background_weight,
-                    viz_enabled=config.dino_viz_enabled,
+                    viz_enabled=config.dino_viz_enabled and config.dino_viz_mode != "off",
+                    viz_mode=config.dino_viz_mode,
+                    viz_every_n_epochs=config.dino_viz_every_n_epochs,
+                    total_epochs=config.epochs,
                     viz_max_samples=config.dino_viz_max_samples,
                 ),
             )
@@ -700,10 +777,35 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                 "Use an OBB checkpoint."
             )
         model.add_callback("on_fit_epoch_end", _on_fit_epoch_end)
-        train_result = model.train(
-            trainer=_make_trainer_factory(),
-            **train_kwargs,
-        )
+        resolved_batch = int(train_kwargs["batch"])
+        batch_attempts: list[int] = [resolved_batch]
+        while True:
+            train_kwargs["batch"] = int(resolved_batch)
+            try:
+                train_result = model.train(
+                    trainer=_make_trainer_factory(),
+                    **train_kwargs,
+                )
+                break
+            except RuntimeError as exc:
+                if str(config.batch_mode) != "auto_max" or not _is_cuda_oom(exc) or resolved_batch <= 1:
+                    raise
+                next_batch = max(1, int(resolved_batch * float(config.oom_backoff_factor)))
+                if next_batch >= resolved_batch:
+                    next_batch = max(1, resolved_batch - 1)
+                if next_batch == resolved_batch:
+                    raise
+                resolved_batch = next_batch
+                batch_attempts.append(resolved_batch)
+                try:
+                    import torch
+
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except Exception:
+                    pass
+                if save_dir_base.exists():
+                    shutil.rmtree(save_dir_base, ignore_errors=True)
 
         save_dir = Path(getattr(train_result, "save_dir", project_dir / config.name))
         weights_dir = save_dir / "weights"
@@ -737,9 +839,13 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
             },
             "metrics": metrics,
             "resolved_device": device,
+            "effective_batch": int(train_kwargs["batch"]),
+            "workers_effective": int(workers_effective),
+            "auto_batch_attempts": batch_attempts,
             "periodic_eval": periodic_eval,
             "dino_visualization": {
                 "enabled": config.dino_viz_enabled,
+                "mode": config.dino_viz_mode,
                 "every_n_epochs": config.dino_viz_every_n_epochs,
                 "max_samples": config.dino_viz_max_samples,
                 "records": dino_viz_records,

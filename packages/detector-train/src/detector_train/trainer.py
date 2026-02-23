@@ -19,21 +19,7 @@ from .dino_viz import save_dino_visualizations
 from .dino_trainer import DinoDistillConfig, DinoOBBTrainer
 from .wandb_logger import finish_wandb, init_wandb, log_wandb
 from detector_grader.data import index_ground_truth, load_labels, load_prediction_labels
-
-
-def _resolve_device(requested: str) -> str:
-    if requested != "auto":
-        return requested
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            return "0"
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            return "mps"
-    except Exception:
-        pass
-    return "cpu"
+from pipeline_runtime_utils import corners_norm_to_px, resolve_device
 
 
 def _configure_torch_runtime(config: TrainConfig) -> None:
@@ -319,13 +305,6 @@ def _run_periodic_eval(
     }
 
 
-def _corners_to_px(corners_norm: np.ndarray, width: int, height: int) -> np.ndarray:
-    out = corners_norm.astype(np.float64).copy()
-    out[:, 0] *= width
-    out[:, 1] *= height
-    return out.astype(np.float32)
-
-
 def _draw_label_set(
     image_bgr: np.ndarray,
     labels,
@@ -336,7 +315,7 @@ def _draw_label_set(
     out = image_bgr.copy()
     h, w = out.shape[:2]
     for idx, label in enumerate(labels):
-        px = _corners_to_px(label.corners_norm, w, h).astype(np.int32)
+        px = corners_norm_to_px(label.corners_norm, w, h).astype(np.int32)
         cv2.polylines(out, [px.reshape((-1, 1, 2))], True, color, 2)
         x = int(np.min(px[:, 0]))
         y = int(np.min(px[:, 1])) - 6
@@ -358,6 +337,8 @@ def _write_eval_visual_artifacts(
     config: TrainConfig,
     eval_result: dict[str, Any],
     epoch: int,
+    selected_records,
+    gt_cache: dict[Path, list[Any]],
 ) -> dict[str, Any]:
     if config.eval_viz_samples <= 0:
         return {"enabled": False, "reason": "eval_viz_samples=0"}
@@ -370,21 +351,18 @@ def _write_eval_visual_artifacts(
     predictions_root = Path(str(predictions_root_raw))
 
     split = str(config.eval_viz_split)
-    candidates = [r for r in index_ground_truth(config.dataset_root) if r.split == split and r.image_path is not None]
-    if not candidates:
+    if not selected_records:
         return {"enabled": False, "reason": f"no {split} samples found"}
-
-    selected = sorted(candidates, key=lambda r: r.stem)[: int(config.eval_viz_samples)]
     viz_root = config.artifacts_root / "eval" / f"epoch_{epoch:03d}" / "viz" / split
     viz_root.mkdir(parents=True, exist_ok=True)
 
     rows: list[dict[str, Any]] = []
-    for rec in selected:
+    for rec in selected_records:
         image = cv2.imread(str(rec.image_path), cv2.IMREAD_COLOR)
         if image is None:
             continue
 
-        gt = load_labels(rec.gt_label_path, is_prediction=False, conf_threshold=0.0) if rec.gt_label_path else []
+        gt = gt_cache.get(rec.gt_label_path, []) if rec.gt_label_path else []
         preds = load_prediction_labels(
             predictions_root=predictions_root,
             model_name=str(model_key),
@@ -436,7 +414,7 @@ def _write_eval_visual_artifacts(
 def train_detector(config: TrainConfig) -> dict[str, Any]:
     config.validate()
     _configure_torch_runtime(config)
-    device = _resolve_device(config.device)
+    device = resolve_device(config.device)
     cache_mode = _resolve_cache_mode(config.cache, config.dataset_root)
     project_dir = config.project if config.project.is_absolute() else (Path.cwd() / config.project)
     project_dir = project_dir.resolve()
@@ -509,6 +487,19 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "wandb_log_every_epoch": config.wandb_log_every_epoch,
         "wandb_log_system_metrics": config.wandb_log_system_metrics,
     }
+    eval_viz_selected_records: list[Any] = []
+    eval_viz_gt_cache: dict[Path, list[Any]] = {}
+    if config.eval_viz_samples > 0:
+        split = str(config.eval_viz_split)
+        records = [r for r in index_ground_truth(config.dataset_root) if r.split == split and r.image_path is not None]
+        eval_viz_selected_records = sorted(records, key=lambda r: r.stem)[: int(config.eval_viz_samples)]
+        for rec in eval_viz_selected_records:
+            if rec.gt_label_path is None:
+                continue
+            if rec.gt_label_path not in eval_viz_gt_cache:
+                eval_viz_gt_cache[rec.gt_label_path] = load_labels(
+                    rec.gt_label_path, is_prediction=False, conf_threshold=0.0
+                )
 
     run_name = config.wandb_run_name or config.name
     wandb_run, wandb_state = init_wandb(
@@ -619,6 +610,8 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                     config=config,
                     eval_result=eval_result,
                     epoch=current_epoch,
+                    selected_records=eval_viz_selected_records,
+                    gt_cache=eval_viz_gt_cache,
                 )
                 periodic_eval.append(eval_result)
                 grade = eval_result.get("grading", {}).get("aggregate", {}).get("run_grade_0_100")

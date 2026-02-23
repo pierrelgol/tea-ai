@@ -33,7 +33,15 @@ def _minimal_config_with_optional_sections() -> dict:
             "wandb_log_system_metrics": False, "wandb_log_every_epoch": False, "eval_enabled": False, "eval_interval_epochs": 1,
             "eval_iou_threshold": 0.5, "eval_conf_threshold": 0.5, "eval_viz_samples": 0, "eval_viz_split": "val"
         },
-        "infer": {"imgsz": 64, "device": "cpu", "conf_threshold": 0.25, "iou_threshold": 0.7, "splits": ["val"], "save_empty": True},
+        "infer": {
+            "imgsz": 64,
+            "device": "cpu",
+            "conf_threshold": 0.25,
+            "iou_threshold": 0.7,
+            "splits": ["val"],
+            "save_empty": True,
+            "batch_size": 4,
+        },
         "grade": {
             "splits": ["val"], "imgsz": 64, "device": "cpu", "conf_threshold": 0.25, "infer_iou_threshold": 0.7,
             "match_iou_threshold": 0.5, "strict_obb": True, "max_samples": None, "calibrate_confidence": False,
@@ -41,6 +49,7 @@ def _minimal_config_with_optional_sections() -> dict:
         },
         "review": {"split": "val", "conf_threshold": 0.25},
         "checks": {"outlier_threshold_px": 2.0, "debug_overlays_per_split": 10, "gui": False, "seed": 42},
+        "profile": {"dataset": "coco128", "train_epochs": 50, "enable_gpu_sampling": False},
     }
 
 

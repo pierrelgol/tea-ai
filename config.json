@@ -15,7 +15,10 @@
   "dataset": {
     "name": "coco128",
     "augmented_subdir": "augmented",
-    "splits": ["train", "val"]
+    "splits": [
+      "train",
+      "val"
+    ]
   },
   "generator": {
     "seed": 42
@@ -56,7 +59,9 @@
     "cudnn_benchmark": true,
     "dino_root": "dinov3",
     "dino_distill_warmup_epochs": 5,
-    "dino_distill_layers": [19],
+    "dino_distill_layers": [
+      19
+    ],
     "dino_distill_channels": 32,
     "dino_distill_object_weight": 1.15,
     "dino_distill_background_weight": 0.15,
@@ -88,11 +93,16 @@
     "device": "auto",
     "conf_threshold": 0.25,
     "iou_threshold": 0.7,
-    "splits": ["val"],
-    "save_empty": true
+    "splits": [
+      "val"
+    ],
+    "save_empty": true,
+    "batch_size": 16
   },
   "grade": {
-    "splits": ["val"],
+    "splits": [
+      "val"
+    ],
     "imgsz": 640,
     "device": "auto",
     "conf_threshold": 0.25,
@@ -114,5 +124,10 @@
     "debug_overlays_per_split": 10,
     "gui": false,
     "seed": 42
+  },
+  "profile": {
+    "dataset": "coco128",
+    "train_epochs": 50,
+    "enable_gpu_sampling": true
   }
 }

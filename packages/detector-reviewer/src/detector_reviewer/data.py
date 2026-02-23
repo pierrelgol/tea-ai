@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from pipeline_runtime_utils import corners_norm_to_px as _corners_norm_to_px
 
 from detector_grader.data import (
     index_ground_truth,
@@ -73,7 +74,4 @@ def load_pred_labels(
 
 
 def corners_to_px(corners_norm: np.ndarray, width: int, height: int) -> np.ndarray:
-    out = corners_norm.astype(np.float64).copy()
-    out[:, 0] *= width
-    out[:, 1] *= height
-    return out.astype(np.float32)
+    return _corners_norm_to_px(corners_norm, width, height)

@@ -1,41 +1,16 @@
 from __future__ import annotations
 
-import random
 from pathlib import Path
 import shutil
 from typing import Any
 
-import numpy as np
-
 from .config import InferConfig
 from .dataset import list_split_images
 from .writer import _format_obb_line, write_prediction_file
+from pipeline_runtime_utils import resolve_device, set_seed
 
 
-def _resolve_device(requested: str) -> str:
-    if requested != "auto":
-        return requested
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            return "0"
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            return "mps"
-    except Exception:
-        pass
-    return "cpu"
-
-
-def _set_seed(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    try:
-        import torch
-
-        torch.manual_seed(seed)
-    except Exception:
-        pass
+import numpy as np
 
 
 def _result_to_lines(res: Any) -> list[str]:
@@ -67,8 +42,8 @@ def _result_to_lines(res: Any) -> list[str]:
 
 def run_inference(config: InferConfig) -> dict:
     config.validate()
-    _set_seed(config.seed)
-    device = _resolve_device(config.device)
+    set_seed(config.seed)
+    device = resolve_device(config.device)
     model_labels_root = config.output_root / config.model_name / "labels"
     if model_labels_root.exists():
         shutil.rmtree(model_labels_root)
@@ -81,22 +56,24 @@ def run_inference(config: InferConfig) -> dict:
 
     for split in config.splits:
         images = list_split_images(config.dataset_root, split)
-        for image_path in images:
-            total_images += 1
+        for start in range(0, len(images), config.batch_size):
+            batch_paths = images[start : start + config.batch_size]
+            if not batch_paths:
+                continue
+            total_images += len(batch_paths)
             results = model.predict(
-                source=str(image_path),
+                source=[str(p) for p in batch_paths],
                 conf=config.conf_threshold,
                 iou=config.iou_threshold,
                 imgsz=config.imgsz,
                 device=device,
                 verbose=False,
             )
-            res = results[0]
-            lines = _result_to_lines(res)
-
-            out_path = config.output_root / config.model_name / "labels" / split / f"{image_path.stem}.txt"
-            write_prediction_file(out_path, lines, save_empty=config.save_empty)
-            written += 1
+            for image_path, res in zip(batch_paths, results):
+                lines = _result_to_lines(res)
+                out_path = config.output_root / config.model_name / "labels" / split / f"{image_path.stem}.txt"
+                write_prediction_file(out_path, lines, save_empty=config.save_empty)
+                written += 1
 
     return {
         "status": "ok",

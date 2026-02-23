@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "pipeline-config",
+  "pipeline-runtime-utils",
   "detector-grader",
   "numpy>=2.1.0",
   "opencv-python-headless>=4.10.0.84",

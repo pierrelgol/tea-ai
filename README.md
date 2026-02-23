@@ -15,9 +15,11 @@ just check-dataset
 just train
 just eval
 just review
+just profile-pipeline
 ```
 
 All stages read the same `config.json`.
+`profile-pipeline` runs a downscaled end-to-end profiling workflow on `coco128` and reports per-stage hotspots.
 
 Cleanup:
 

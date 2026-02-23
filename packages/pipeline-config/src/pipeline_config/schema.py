@@ -17,6 +17,7 @@ _ALLOWED_TOP = {
     "grade",
     "review",
     "checks",
+    "profile",
 }
 
 
@@ -33,6 +34,7 @@ class PipelineConfig:
     grade: dict[str, Any]
     review: dict[str, Any]
     checks: dict[str, Any]
+    profile: dict[str, Any]
 
 
 
@@ -162,9 +164,9 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
     infer = _expect_dict(payload.get("infer", {}), "infer")
     _expect_keys(
         infer,
-        {"imgsz", "device", "conf_threshold", "iou_threshold", "splits", "save_empty"},
+        {"imgsz", "device", "conf_threshold", "iou_threshold", "splits", "save_empty", "batch_size"},
         "infer",
-        required={"imgsz", "device", "conf_threshold", "iou_threshold", "splits", "save_empty"},
+        required={"imgsz", "device", "conf_threshold", "iou_threshold", "splits", "save_empty", "batch_size"},
     )
 
     grade = _expect_dict(payload.get("grade", {}), "grade")
@@ -194,6 +196,14 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
         required={"outlier_threshold_px", "debug_overlays_per_split", "gui", "seed"},
     )
 
+    profile = _expect_dict(payload.get("profile", {}), "profile")
+    _expect_keys(
+        profile,
+        {"dataset", "train_epochs", "enable_gpu_sampling"},
+        "profile",
+        required={"dataset", "train_epochs", "enable_gpu_sampling"},
+    )
+
     paths_norm = {
         "dataset_root": dataset_root,
         "artifacts_root": artifacts_root,
@@ -213,4 +223,5 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
         grade=grade,
         review=review,
         checks=checks,
+        profile=profile,
     )

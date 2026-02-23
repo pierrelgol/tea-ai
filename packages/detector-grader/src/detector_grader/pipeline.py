@@ -209,19 +209,37 @@ def _calibrate_per_class_thresholds(
 
     thresholds: dict[int, float] = {}
     for class_id in sorted(class_ids):
+        # Only samples containing predictions for this class are affected by threshold tweaks.
+        affected_samples: list[CachedSample] = []
+        unaffected_samples: list[CachedSample] = []
+        for s in samples:
+            if any(int(p.class_id) == class_id for p in s.pred_labels_all):
+                affected_samples.append(s)
+            else:
+                unaffected_samples.append(s)
+
+        base_trial = dict(thresholds)
+        unaffected_rows = _score_cached_samples(
+            unaffected_samples,
+            per_class_thresholds=base_trial,
+            default_threshold=base_threshold,
+            match_iou_threshold=match_iou_threshold,
+            weights_profile=weights_profile,
+        )
+
         best_t = float(base_threshold)
         best_grade = -1.0
         for t in candidates:
-            trial = dict(thresholds)
+            trial = dict(base_trial)
             trial[class_id] = float(t)
-            rows = _score_cached_samples(
-                samples,
+            affected_rows = _score_cached_samples(
+                affected_samples,
                 per_class_thresholds=trial,
                 default_threshold=base_threshold,
                 match_iou_threshold=match_iou_threshold,
                 weights_profile=weights_profile,
             )
-            grade = float(aggregate_scores(rows).get("run_grade_0_100", 0.0))
+            grade = float(aggregate_scores(unaffected_rows + affected_rows).get("run_grade_0_100", 0.0))
             if grade > best_grade:
                 best_grade = grade
                 best_t = float(t)

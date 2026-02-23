@@ -17,6 +17,7 @@ class InferConfig:
     seed: int
     splits: list[str]
     save_empty: bool
+    batch_size: int = 16
 
     def validate(self) -> None:
         if not self.weights.exists():
@@ -29,3 +30,5 @@ class InferConfig:
             raise ValueError("iou_threshold must be in [0,1]")
         if not self.splits:
             raise ValueError("splits must not be empty")
+        if self.batch_size < 1:
+            raise ValueError("batch_size must be >= 1")

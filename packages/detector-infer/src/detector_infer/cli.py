@@ -1,34 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from pipeline_config import build_layout, load_pipeline_config
+from pipeline_runtime_utils import resolve_latest_weights_from_artifacts
 
 from .config import InferConfig
 from .infer import run_inference
-
-
-def _resolve_latest_weights(artifacts_root: Path) -> Path:
-    latest_file = artifacts_root / "latest_run.json"
-    if latest_file.exists():
-        payload = json.loads(latest_file.read_text(encoding="utf-8"))
-        best = payload.get("weights_best")
-        if isinstance(best, str) and best:
-            p = Path(best)
-            if not p.is_absolute():
-                p = (Path.cwd() / p).resolve()
-            if p.exists():
-                return p
-    candidates = sorted(
-        artifacts_root.glob("*/runs/*/train/ultralytics/*/weights/best.pt"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    if candidates:
-        return candidates[0]
-    raise FileNotFoundError(f"could not resolve latest best weights from {artifacts_root}")
 
 
 def main() -> None:
@@ -53,7 +32,7 @@ def main() -> None:
     if model_path.exists() and model_path.suffix == ".pt":
         weights = model_path
     else:
-        weights = _resolve_latest_weights(shared.paths["artifacts_root"])
+        weights = resolve_latest_weights_from_artifacts(shared.paths["artifacts_root"])
 
     ic = shared.infer
     cfg = InferConfig(
@@ -68,6 +47,7 @@ def main() -> None:
         seed=int(shared.run["seed"]),
         splits=[str(s) for s in ic.get("splits", ["val"])],
         save_empty=bool(ic.get("save_empty", True)),
+        batch_size=int(ic.get("batch_size", 16)),
     )
 
     summary = run_inference(cfg)

@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "pipeline-config",
+  "pipeline-runtime-utils",
+  "pipeline-profile",
   "dinov3-fetcher",
   "dinov3",
   "augment-checker",
@@ -17,6 +19,7 @@ dependencies = [
   "dataset-fetcher",
   "target-labeller",
   "huggingface-hub>=1.4.1",
+  "tdqm>=0.0.1",
 ]
 
 [tool.uv.workspace]
@@ -24,6 +27,8 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 pipeline-config = { workspace = true }
+pipeline-runtime-utils = { workspace = true }
+pipeline-profile = { workspace = true }
 dinov3-fetcher = { workspace = true }
 dinov3 = { workspace = true }
 augment-checker = { workspace = true }

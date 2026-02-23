@@ -75,3 +75,7 @@ eval: venv
 review: venv
     @uv sync --all-packages
     @uv run detector-reviewer --config {{config}}
+
+profile-pipeline: venv
+    @uv sync --all-packages
+    @uv run pipeline-profile --config {{config}}

@@ -441,6 +441,13 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
     project_dir = config.project if config.project.is_absolute() else (Path.cwd() / config.project)
     project_dir = project_dir.resolve()
 
+    if config.artifacts_root.exists():
+        shutil.rmtree(config.artifacts_root)
+    config.artifacts_root.mkdir(parents=True, exist_ok=True)
+    save_dir_base = project_dir / config.name
+    if save_dir_base.exists():
+        shutil.rmtree(save_dir_base)
+
     data_yaml_path, names = write_data_yaml(
         dataset_root=config.dataset_root,
         output_path=config.artifacts_root / "data.yaml",
@@ -518,13 +525,6 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
 
     try:
         from ultralytics import YOLO
-
-        if config.artifacts_root.exists():
-            shutil.rmtree(config.artifacts_root)
-        config.artifacts_root.mkdir(parents=True, exist_ok=True)
-        save_dir_base = project_dir / config.name
-        if save_dir_base.exists():
-            shutil.rmtree(save_dir_base)
 
         stage_a_epochs = 0
         if config.epochs >= 2:

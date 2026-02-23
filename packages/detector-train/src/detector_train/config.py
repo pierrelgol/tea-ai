@@ -19,32 +19,32 @@ class TrainConfig:
     epochs: int = 128
     imgsz: int = 512
     batch: int = 16
-    workers: int = 12
-    patience: int = 40
-    cache: str = "auto"  # auto|false|ram|disk
+    workers: int = 16
+    patience: int = 30
+    cache: str = "auto"
     amp: bool = True
     plots: bool = True
     tf32: bool = True
     cudnn_benchmark: bool = True
 
     optimizer: str = "AdamW"
-    lr0: float = 0.0015
+    lr0: float = 0.0012
     lrf: float = 0.01
-    weight_decay: float = 0.0005
-    warmup_epochs: float = 5.0
+    weight_decay: float = 0.0006
+    warmup_epochs: float = 6.0
     cos_lr: bool = True
 
-    close_mosaic: int = 16
-    mosaic: float = 0.6
-    mixup: float = 0.05
-    degrees: float = 1.5
-    translate: float = 0.04
-    scale: float = 0.25
+    close_mosaic: int = 12
+    mosaic: float = 0.5
+    mixup: float = 0.03
+    degrees: float = 1.0
+    translate: float = 0.035
+    scale: float = 0.35
     shear: float = 0.0
     perspective: float = 0.0
     hsv_h: float = 0.010
-    hsv_s: float = 0.35
-    hsv_v: float = 0.25
+    hsv_s: float = 0.30
+    hsv_v: float = 0.22
     fliplr: float = 0.5
     flipud: float = 0.0
     copy_paste: float = 0.0
@@ -76,8 +76,8 @@ class TrainConfig:
 
     eval_enabled: bool = True
     eval_interval_epochs: int = 2
-    eval_iou_threshold: float = 0.5
-    eval_conf_threshold: float = 0.25
+    eval_iou_threshold: float = 0.75
+    eval_conf_threshold: float = 0.9
     eval_viz_samples: int = 0
 
     save_json: bool = True

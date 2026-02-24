@@ -229,6 +229,12 @@ def _extract_epoch_metrics(trainer) -> dict[str, float]:
     dino_bg = _to_float(getattr(trainer, "_dino_epoch_bg_loss", None))
     if dino_bg is not None:
         out["train/loss_distill_bg"] = dino_bg
+    dino_terms = getattr(trainer, "_dino_epoch_terms", None)
+    if isinstance(dino_terms, dict):
+        for key, value in dino_terms.items():
+            fv = _to_float(value)
+            if fv is not None:
+                out[f"distill/{key}"] = fv
 
     return out
 
@@ -521,9 +527,20 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
         "dino_root": str(config.dino_root),
         "dino_distill_warmup_epochs": config.dino_distill_warmup_epochs,
         "dino_distill_layers": list(config.dino_distill_layers),
+        "dino_to_yolo_taps": {str(k): int(v) for k, v in config.dino_to_yolo_taps.items()},
         "dino_distill_channels": config.dino_distill_channels,
         "dino_distill_object_weight": config.dino_distill_object_weight,
         "dino_distill_background_weight": config.dino_distill_background_weight,
+        "dino_feat_layer_weights": {str(k): float(v) for k, v in config.dino_feat_layer_weights.items()},
+        "dino_attn_enabled": config.dino_attn_enabled,
+        "dino_attn_layers": list(config.dino_attn_layers),
+        "dino_attn_weight_stage_a": config.dino_attn_weight_stage_a,
+        "dino_attn_weight_stage_b": config.dino_attn_weight_stage_b,
+        "dino_objmap_enabled": config.dino_objmap_enabled,
+        "dino_objmap_layer": config.dino_objmap_layer,
+        "dino_objmap_weight_stage_a": config.dino_objmap_weight_stage_a,
+        "dino_objmap_weight_stage_b": config.dino_objmap_weight_stage_b,
+        "dino_objmap_apply_inside_gt_only": config.dino_objmap_apply_inside_gt_only,
         "stage_a_ratio": config.stage_a_ratio,
         "stage_a_freeze": config.stage_a_freeze,
         "stage_a_distill_weight": config.stage_a_distill_weight,
@@ -767,10 +784,21 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                     stage_a_weight=config.stage_a_distill_weight,
                     stage_b_weight=config.stage_b_distill_weight,
                     warmup_epochs=config.dino_distill_warmup_epochs,
-                    student_layers=tuple(int(v) for v in config.dino_distill_layers),
+                    dino_layers=tuple(int(v) for v in config.dino_distill_layers),
+                    dino_to_yolo_taps={int(k): int(v) for k, v in config.dino_to_yolo_taps.items()},
                     channels=int(config.dino_distill_channels),
                     object_weight=config.dino_distill_object_weight,
                     background_weight=config.dino_distill_background_weight,
+                    feat_layer_weights={int(k): float(v) for k, v in config.dino_feat_layer_weights.items()},
+                    attn_enabled=config.dino_attn_enabled,
+                    attn_layers=tuple(int(v) for v in config.dino_attn_layers),
+                    attn_weight_stage_a=float(config.dino_attn_weight_stage_a),
+                    attn_weight_stage_b=float(config.dino_attn_weight_stage_b),
+                    objmap_enabled=config.dino_objmap_enabled,
+                    objmap_layer=int(config.dino_objmap_layer),
+                    objmap_weight_stage_a=float(config.dino_objmap_weight_stage_a),
+                    objmap_weight_stage_b=float(config.dino_objmap_weight_stage_b),
+                    objmap_apply_inside_gt_only=bool(config.dino_objmap_apply_inside_gt_only),
                     viz_enabled=config.dino_viz_enabled and config.dino_viz_mode != "off",
                     viz_mode=config.dino_viz_mode,
                     viz_every_n_epochs=config.dino_viz_every_n_epochs,

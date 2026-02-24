@@ -60,9 +60,20 @@ class TrainConfig:
     dino_root: Path = Path("dinov3")
     dino_distill_warmup_epochs: int = 5
     dino_distill_layers: tuple[int, ...] = (19,)
+    dino_to_yolo_taps: dict[int, int] = field(default_factory=lambda: {9: 15, 15: 19, 19: 9})
     dino_distill_channels: int = 32
     dino_distill_object_weight: float = 1.15
     dino_distill_background_weight: float = 0.15
+    dino_feat_layer_weights: dict[int, float] = field(default_factory=lambda: {9: 0.15, 15: 0.45, 19: 0.40})
+    dino_attn_enabled: bool = True
+    dino_attn_layers: tuple[int, ...] = (19,)
+    dino_attn_weight_stage_a: float = 0.005
+    dino_attn_weight_stage_b: float = 0.003
+    dino_objmap_enabled: bool = True
+    dino_objmap_layer: int = 19
+    dino_objmap_weight_stage_a: float = 0.0
+    dino_objmap_weight_stage_b: float = 0.02
+    dino_objmap_apply_inside_gt_only: bool = True
     stage_a_ratio: float = 0.30
     stage_a_freeze: int = 10
     stage_a_distill_weight: float = 0.25
@@ -142,12 +153,20 @@ class TrainConfig:
             raise ValueError("dino_distill_warmup_epochs must be >= 0")
         if not self.dino_distill_layers:
             raise ValueError("dino_distill_layers must contain at least one layer index")
+        if not self.dino_to_yolo_taps:
+            raise ValueError("dino_to_yolo_taps must contain at least one mapping")
+        if not self.dino_feat_layer_weights:
+            raise ValueError("dino_feat_layer_weights must contain at least one layer weight")
         if self.dino_distill_channels < 8:
             raise ValueError("dino_distill_channels must be >= 8")
         if self.dino_distill_object_weight < 0:
             raise ValueError("dino_distill_object_weight must be >= 0")
         if self.dino_distill_background_weight < 0:
             raise ValueError("dino_distill_background_weight must be >= 0")
+        if self.dino_attn_weight_stage_a < 0 or self.dino_attn_weight_stage_b < 0:
+            raise ValueError("dino_attn_weight_stage_a/b must be >= 0")
+        if self.dino_objmap_weight_stage_a < 0 or self.dino_objmap_weight_stage_b < 0:
+            raise ValueError("dino_objmap_weight_stage_a/b must be >= 0")
         if self.stage_a_ratio <= 0 or self.stage_a_ratio >= 1:
             raise ValueError("stage_a_ratio must be in (0,1)")
         if self.stage_a_freeze < 0:

@@ -56,6 +56,13 @@ class DistillRegistry(nn.Module):
         # Return in student dtype for downstream loss math consistency.
         return y_proj.to(dtype=y.dtype), d_proj.to(dtype=y.dtype)
 
+    @staticmethod
+    def _spatial_standardize(x: Tensor, eps: float = 1e-4) -> Tensor:
+        # Normalize each channel over spatial dims to reduce scale spikes on shallow maps.
+        mean = x.mean(dim=(2, 3), keepdim=True)
+        std = x.std(dim=(2, 3), keepdim=True, unbiased=False).clamp_min(eps)
+        return (x - mean) / std
+
     def feature_loss(
         self,
         *,
@@ -84,6 +91,10 @@ class DistillRegistry(nn.Module):
 
             proj_ch = max(8, int(self.cfg.channels))
             y_proj, d_proj = self._get_proj_pair(layer, y, d, proj_ch)
+            if int(layer) == 9:
+                # Extra guard for shallow high-res layer that tends to be noisy.
+                y_proj = self._spatial_standardize(y_proj)
+                d_proj = self._spatial_standardize(d_proj)
             y_proj = F.normalize(y_proj, p=2.0, dim=1)
             d_proj = F.normalize(d_proj, p=2.0, dim=1)
 

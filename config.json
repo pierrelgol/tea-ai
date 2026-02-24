@@ -116,21 +116,21 @@
     "dino_distill_object_weight": 1.15,
     "dino_distill_background_weight": 0.15,
     "dino_feat_layer_weights": {
-      "9": 0.25,
-      "15": 0.35,
+      "9": 0.15,
+      "15": 0.45,
       "19": 0.4
     },
     "dino_attn_enabled": true,
     "dino_attn_layers": [
       19
     ],
-    "dino_attn_weight_stage_a": 0.01,
-    "dino_attn_weight_stage_b": 0.005,
+    "dino_attn_weight_stage_a": 0.005,
+    "dino_attn_weight_stage_b": 0.003,
     "dino_objmap_enabled": true,
     "dino_objmap_layer": 19,
     "dino_objmap_weight_stage_a": 0.0,
     "dino_objmap_weight_stage_b": 0.02,
-    "dino_objmap_apply_inside_gt_only": false,
+    "dino_objmap_apply_inside_gt_only": true,
     "stage_a_ratio": 0.3,
     "stage_a_freeze": 10,
     "stage_a_distill_weight": 0.25,

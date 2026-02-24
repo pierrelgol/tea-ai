@@ -19,6 +19,23 @@ def _minimal_config_with_optional_sections() -> dict:
         "run": {"dataset": "coco1024", "model": "m", "model_key": "k", "run_id": "r", "seed": 42},
         "dataset": {"name": "coco1024", "augmented_subdir": "augmented", "splits": ["train", "val"]},
         "generator": {"seed": 42},
+        "tuner": {
+            "enabled": True,
+            "dataset": "coco128",
+            "coarse_epochs": 10,
+            "confirm_epochs": 20,
+            "vram_target_utilization": 0.92,
+            "batch_min": 1,
+            "batch_max_cap": 64,
+            "imgsz_candidates": [64, 96],
+            "workers_candidates": [0, 1],
+            "cache_candidates": ["disk"],
+            "amp_candidates": [False],
+            "tf32_candidates": [False],
+            "cudnn_benchmark_candidates": [False],
+            "max_trials": 5,
+            "artifacts_subdir": "tuner",
+        },
         "train": {
             "epochs": 1, "imgsz": 64, "batch": 1, "batch_mode": "fixed", "batch_max": 2, "batch_utilization_target": 0.9,
             "oom_backoff_factor": 0.85, "workers": 0, "workers_auto": False, "workers_max": 4, "patience": 1,
@@ -34,7 +51,8 @@ def _minimal_config_with_optional_sections() -> dict:
             "wandb_entity": None, "wandb_run_name": None, "wandb_tags": [], "wandb_notes": None, "wandb_mode": "offline",
             "wandb_log_system_metrics": False, "wandb_log_every_epoch": False, "eval_enabled": False,
             "periodic_eval_mode": "off", "periodic_eval_sparse_epochs": 10, "eval_interval_epochs": 1,
-            "eval_iou_threshold": 0.5, "eval_conf_threshold": 0.5, "eval_viz_samples": 0, "eval_viz_split": "val"
+            "eval_iou_threshold": 0.5, "eval_conf_threshold": 0.5, "eval_viz_samples": 0, "eval_viz_split": "val",
+            "tuned_gpu_signature": None, "tuned_at_utc": None, "tuned_by": None, "tuned_profile_path": None,
         },
         "infer": {
             "imgsz": 64,

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
+import subprocess
 
 from pipeline_config import build_layout, load_pipeline_config
+from pipeline_runtime_utils import resolve_device
 
 from .config import TrainConfig
 from .trainer import train_detector
@@ -29,12 +32,75 @@ def _resolve_model_arg(model_arg: str) -> str:
         ) from exc
 
 
+def _current_gpu_signature(resolved_device: str) -> str | None:
+    if resolved_device in {"cpu", "mps"}:
+        return None
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return None
+        idx = 0
+        rd = resolved_device.strip().lower()
+        if rd.isdigit():
+            idx = int(rd)
+        elif rd.startswith("cuda:"):
+            idx = int(rd.split(":", 1)[1])
+        props = torch.cuda.get_device_properties(idx)
+        driver = "unknown"
+        try:
+            proc = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=driver_version",
+                    "--format=csv,noheader,nounits",
+                    "--id",
+                    str(idx),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            lines = [x.strip() for x in proc.stdout.splitlines() if x.strip()]
+            if lines:
+                driver = lines[0]
+        except Exception:
+            pass
+        raw = f"{props.name}|{int(props.total_memory // (1024 * 1024))}|{props.major}.{props.minor}|{driver}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    except Exception:
+        return None
+
+
+def _enforce_tuner_lock(shared) -> None:
+    tuner_cfg = shared.tuner if isinstance(shared.tuner, dict) else {}
+    if not bool(tuner_cfg.get("enabled", True)):
+        return
+    resolved = resolve_device(str(shared.train.get("device", "auto")))
+    if resolved in {"cpu", "mps"}:
+        return
+    tuned_sig = shared.train.get("tuned_gpu_signature")
+    if not isinstance(tuned_sig, str) or not tuned_sig.strip():
+        raise RuntimeError(
+            "missing train.tuned_gpu_signature for current configuration; run `just tune-gpu` before training"
+        )
+    current_sig = _current_gpu_signature(resolved)
+    if current_sig is None:
+        raise RuntimeError("failed to detect current GPU signature; run `just tune-gpu` after fixing CUDA visibility")
+    if current_sig != tuned_sig:
+        raise RuntimeError(
+            f"tuned GPU signature mismatch (config={tuned_sig}, current={current_sig}); run `just tune-gpu` before training"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train detector model")
     parser.add_argument("--config", type=Path, default=Path("config.json"))
     args = parser.parse_args()
 
     shared = load_pipeline_config(args.config)
+    _enforce_tuner_lock(shared)
+
     dataset_name = str(shared.dataset.get("name") or shared.run["dataset"])
     dataset_root = shared.paths["dataset_root"] / str(shared.dataset.get("augmented_subdir", "augmented")) / dataset_name
 

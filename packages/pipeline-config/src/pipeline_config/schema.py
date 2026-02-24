@@ -12,6 +12,7 @@ _ALLOWED_TOP = {
     "run",
     "dataset",
     "generator",
+    "tuner",
     "train",
     "infer",
     "grade",
@@ -29,6 +30,7 @@ class PipelineConfig:
     run: dict[str, Any]
     dataset: dict[str, Any]
     generator: dict[str, Any]
+    tuner: dict[str, Any]
     train: dict[str, Any]
     infer: dict[str, Any]
     grade: dict[str, Any]
@@ -130,6 +132,46 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
     generator = _expect_dict(payload.get("generator", {}), "generator")
     _expect_keys(generator, {"seed"}, "generator", required={"seed"})
 
+    tuner = _expect_dict(payload.get("tuner", {}), "tuner")
+    _expect_keys(
+        tuner,
+        {
+            "enabled",
+            "dataset",
+            "coarse_epochs",
+            "confirm_epochs",
+            "vram_target_utilization",
+            "batch_min",
+            "batch_max_cap",
+            "imgsz_candidates",
+            "workers_candidates",
+            "cache_candidates",
+            "amp_candidates",
+            "tf32_candidates",
+            "cudnn_benchmark_candidates",
+            "max_trials",
+            "artifacts_subdir",
+        },
+        "tuner",
+        required={
+            "enabled",
+            "dataset",
+            "coarse_epochs",
+            "confirm_epochs",
+            "vram_target_utilization",
+            "batch_min",
+            "batch_max_cap",
+            "imgsz_candidates",
+            "workers_candidates",
+            "cache_candidates",
+            "amp_candidates",
+            "tf32_candidates",
+            "cudnn_benchmark_candidates",
+            "max_trials",
+            "artifacts_subdir",
+        },
+    )
+
     train = _expect_dict(payload.get("train", {}), "train")
     _expect_keys(train, {
         "epochs", "imgsz", "batch", "batch_mode", "batch_max", "batch_utilization_target", "oom_backoff_factor",
@@ -146,6 +188,7 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
         "wandb_mode", "wandb_log_system_metrics", "wandb_log_every_epoch",
         "eval_enabled", "periodic_eval_mode", "periodic_eval_sparse_epochs", "eval_interval_epochs", "eval_iou_threshold", "eval_conf_threshold",
         "eval_viz_samples", "eval_viz_split",
+        "tuned_gpu_signature", "tuned_at_utc", "tuned_by", "tuned_profile_path",
     }, "train", required={
         "epochs", "imgsz", "batch", "batch_mode", "batch_max", "batch_utilization_target", "oom_backoff_factor",
         "workers", "workers_auto", "workers_max", "patience", "cache", "throughput_mode", "device",
@@ -161,6 +204,7 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
         "wandb_mode", "wandb_log_system_metrics", "wandb_log_every_epoch",
         "eval_enabled", "periodic_eval_mode", "periodic_eval_sparse_epochs", "eval_interval_epochs", "eval_iou_threshold", "eval_conf_threshold",
         "eval_viz_samples", "eval_viz_split",
+        "tuned_gpu_signature", "tuned_at_utc", "tuned_by", "tuned_profile_path",
     })
 
     infer = _expect_dict(payload.get("infer", {}), "infer")
@@ -233,6 +277,7 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
         run=run_norm,
         dataset=dataset,
         generator=generator,
+        tuner=tuner,
         train=train,
         infer=infer,
         grade=grade,

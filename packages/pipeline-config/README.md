@@ -139,6 +139,32 @@ Synthetic data generation parameters.
 }
 ```
 
+### tuner
+
+One-time offline GPU tuning parameters (used by `gpu-auto-tuner` before training).
+
+```json
+{
+  "tuner": {
+    "enabled": true,
+    "dataset": "coco128",
+    "coarse_epochs": 10,
+    "confirm_epochs": 20,
+    "vram_target_utilization": 0.92,
+    "batch_min": 1,
+    "batch_max_cap": 64,
+    "imgsz_candidates": [512, 448, 384],
+    "workers_candidates": [4, 8, 12, 16],
+    "cache_candidates": ["ram", "disk"],
+    "amp_candidates": [true, false],
+    "tf32_candidates": [true, false],
+    "cudnn_benchmark_candidates": [true, false],
+    "max_trials": 30,
+    "artifacts_subdir": "tuner"
+  }
+}
+```
+
 ### train
 
 Training hyperparameters including DINOv3 distillation.
@@ -206,7 +232,11 @@ Training hyperparameters including DINOv3 distillation.
     "eval_iou_threshold": 0.75,
     "eval_conf_threshold": 0.9,
     "eval_viz_samples": 8,
-    "eval_viz_split": "val"
+    "eval_viz_split": "val",
+    "tuned_gpu_signature": null,
+    "tuned_at_utc": null,
+    "tuned_by": null,
+    "tuned_profile_path": null
   }
 }
 ```

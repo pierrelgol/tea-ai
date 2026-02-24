@@ -67,6 +67,10 @@ train: venv
     @uv sync --all-packages
     @uv run detector-train --config {{config}}
 
+tune-gpu: venv
+    @uv sync --all-packages
+    @uv run gpu-auto-tuner --config {{config}}
+
 eval: venv
     @uv sync --all-packages
     @uv run detector-infer --config {{config}}

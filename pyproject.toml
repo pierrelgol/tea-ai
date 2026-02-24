@@ -8,6 +8,7 @@ dependencies = [
   "pipeline-config",
   "pipeline-runtime-utils",
   "pipeline-profile",
+  "gpu-auto-tuner",
   "dinov3-fetcher",
   "dinov3",
   "augment-checker",
@@ -20,6 +21,7 @@ dependencies = [
   "target-labeller",
   "huggingface-hub>=1.4.1",
   "tdqm>=0.0.1",
+  "pytest>=9.0.2",
 ]
 
 [tool.uv.workspace]
@@ -39,3 +41,4 @@ detector-train = { workspace = true }
 dataset-generator = { workspace = true }
 dataset-fetcher = { workspace = true }
 target-labeller = { workspace = true }
+gpu-auto-tuner = { workspace = true }

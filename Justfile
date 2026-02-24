@@ -76,6 +76,10 @@ eval: venv
     @uv run detector-infer --config {{config}}
     @uv run detector-grader --config {{config}}
 
+optimize: venv
+    @uv sync --all-packages
+    @uv run detector-optimize --config {{config}}
+
 review: venv
     @uv sync --all-packages
     @uv run detector-reviewer --config {{config}}

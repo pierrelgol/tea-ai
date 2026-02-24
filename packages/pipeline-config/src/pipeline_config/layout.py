@@ -10,6 +10,7 @@ class PipelineLayout:
     run_root: Path
     train_root: Path
     train_ultralytics_root: Path
+    optimize_root: Path
     infer_root: Path
     grade_root: Path
     eval_root: Path
@@ -30,6 +31,7 @@ def build_layout(*, artifacts_root: Path, model_key: str, run_id: str) -> Pipeli
         run_root=run_root,
         train_root=run_root / "train",
         train_ultralytics_root=run_root / "train" / "ultralytics",
+        optimize_root=run_root / "optimize",
         infer_root=run_root / "infer",
         grade_root=run_root / "grade",
         eval_root=run_root / "eval",

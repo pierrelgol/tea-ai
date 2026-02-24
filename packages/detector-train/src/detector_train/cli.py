@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 from pathlib import Path
+import re
 import subprocess
 
 from pipeline_config import build_layout, load_pipeline_config
@@ -70,6 +72,27 @@ def _current_gpu_signature(resolved_device: str) -> str | None:
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
     except Exception:
         return None
+
+
+def _slug_token(value: str) -> str:
+    token = re.sub(r"[^a-zA-Z0-9]+", "-", str(value).strip().lower()).strip("-")
+    return token or "na"
+
+
+def _resolve_wandb_run_name(*, shared, run_id: str, model_key: str, dataset_name: str) -> str:
+    tc = shared.train if isinstance(shared.train, dict) else {}
+    configured = tc.get("wandb_run_name")
+    if isinstance(configured, str) and configured.strip() and configured.strip().lower() != "auto":
+        return configured.strip()
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    seed = int(shared.run.get("seed", 0)) if isinstance(shared.run, dict) else 0
+    epochs = int(tc.get("epochs", 0))
+    name = (
+        f"tea-{_slug_token(dataset_name)}-{_slug_token(model_key)}-"
+        f"{_slug_token(run_id)}-e{epochs}-s{seed}-{ts}"
+    )
+    return name[:128]
 
 
 def _enforce_tuner_lock(shared) -> None:
@@ -178,7 +201,12 @@ def main() -> None:
         wandb_enabled=bool(tc.get("wandb_enabled", True)),
         wandb_project=str(tc.get("wandb_project", "tea-ai-detector")),
         wandb_entity=tc.get("wandb_entity"),
-        wandb_run_name=tc.get("wandb_run_name") or run_id,
+        wandb_run_name=_resolve_wandb_run_name(
+            shared=shared,
+            run_id=run_id,
+            model_key=model_key,
+            dataset_name=dataset_name,
+        ),
         wandb_tags=list(tc.get("wandb_tags", [])),
         wandb_notes=tc.get("wandb_notes"),
         wandb_mode=str(tc.get("wandb_mode", "auto")),
@@ -201,6 +229,7 @@ def main() -> None:
         print(f"run_dir: {summary['artifacts']['save_dir']}")
         print(f"best_weights: {summary['artifacts']['weights_best']}")
         print(f"wandb_mode: {summary['wandb']['mode_used']}")
+        print(f"wandb_run_name: {config.wandb_run_name}")
         if summary["wandb"].get("error"):
             print(f"wandb_note: {summary['wandb']['error']}")
 

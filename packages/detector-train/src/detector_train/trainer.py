@@ -289,7 +289,7 @@ def _run_periodic_eval(
         log_wandb(wandb_run, {"eval/status": 0.0}, step=epoch)
         return {"status": "skipped", "reason": f"missing checkpoint: {weights_last}"}
 
-    epoch_root = config.artifacts_root / "eval" / f"epoch_{epoch:03d}"
+    epoch_root = config.artifacts_root / "eval" / "latest"
     pred_root = epoch_root / "predictions"
     reports_dir = epoch_root / "reports"
     result = run_grading(
@@ -390,66 +390,63 @@ def _write_eval_visual_artifacts(
     split = str(config.eval_viz_split)
     if not selected_records:
         return {"enabled": False, "reason": f"no {split} samples found"}
-    viz_root = config.artifacts_root / "eval" / f"epoch_{epoch:03d}" / "viz" / split
-    viz_root.mkdir(parents=True, exist_ok=True)
 
-    rows: list[dict[str, Any]] = []
-    for rec in selected_records:
-        if rec.image_path is None:
-            continue
-        image = image_cache.get(rec.stem)
-        if image is None:
-            continue
+    rec = selected_records[0]
+    if rec.image_path is None:
+        return {"enabled": False, "reason": "selected sample has no image path"}
 
-        gt = gt_cache.get(rec.gt_label_path, []) if rec.gt_label_path else []
-        preds = load_prediction_labels(
-            predictions_root=predictions_root,
-            model_name=str(model_key),
-            split=rec.split,
-            stem=rec.stem,
-            conf_threshold=float(config.eval_conf_threshold),
-        )
+    image = image_cache.get(rec.stem)
+    if image is None:
+        return {"enabled": False, "reason": f"image missing for sample: {rec.stem}"}
 
-        gt_only = gt_overlay_cache.get(rec.stem)
-        if gt_only is None:
-            gt_only = _draw_label_set(image, gt, color=(0, 255, 0), tag="GT")
-            gt_overlay_cache[rec.stem] = gt_only
-        pred_only = _draw_label_set(image, preds, color=(0, 0, 255), tag="PR")
-        panel = _draw_label_set(gt_only, preds, color=(0, 0, 255), tag="PR")
+    gt = gt_cache.get(rec.gt_label_path, []) if rec.gt_label_path else []
+    preds = load_prediction_labels(
+        predictions_root=predictions_root,
+        model_name=str(model_key),
+        split=rec.split,
+        stem=rec.stem,
+        conf_threshold=float(config.eval_conf_threshold),
+    )
 
-        gt_path = viz_root / f"{rec.stem}_gt.png"
-        pred_path = viz_root / f"{rec.stem}_pred.png"
-        panel_path = viz_root / f"{rec.stem}_panel.png"
+    gt_only = gt_overlay_cache.get(rec.stem)
+    if gt_only is None:
+        gt_only = _draw_label_set(image, gt, color=(0, 255, 0), tag="GT")
+        gt_overlay_cache[rec.stem] = gt_only
+    panel = _draw_label_set(gt_only, preds, color=(0, 0, 255), tag="PR")
+    cv2.putText(
+        panel,
+        f"epoch {epoch:03d}",
+        (10, max(18, panel.shape[0] - 12)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.55,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
 
-        cv2.imwrite(str(gt_path), gt_only)
-        cv2.imwrite(str(pred_path), pred_only)
-        cv2.imwrite(str(panel_path), panel)
-        rows.append(
-            {
-                "split": rec.split,
-                "stem": rec.stem,
-                "gt_overlay": str(gt_path),
-                "pred_overlay": str(pred_path),
-                "panel_overlay": str(panel_path),
-            }
-        )
+    artifact_dir = config.artifacts_root / "train_artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    panel_path = artifact_dir / "prediction_vs_gt.png"
+    if not cv2.imwrite(str(panel_path), panel):
+        return {"enabled": False, "reason": f"failed to write visualization: {panel_path}"}
 
-    index_payload = {
-        "epoch": epoch,
-        "split": split,
-        "samples_requested": int(config.eval_viz_samples),
-        "samples_written": len(rows),
-        "rows": rows,
+    meta = {
+        "epoch": int(epoch),
+        "split": str(rec.split),
+        "stem": str(rec.stem),
+        "gt_count": int(len(gt)),
+        "pred_count": int(len(preds)),
+        "panel_overlay": str(panel_path),
     }
-    index_path = viz_root / "index.json"
-    index_path.write_text(json.dumps(index_payload, indent=2), encoding="utf-8")
+    meta_path = artifact_dir / "prediction_vs_gt.json"
+    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     return {
         "enabled": True,
-        "split": split,
-        "viz_root": str(viz_root),
-        "index_json": str(index_path),
-        "samples": rows,
+        "artifact_dir": str(artifact_dir),
+        "panel_overlay": str(panel_path),
+        "meta_json": str(meta_path),
+        "sample": meta,
     }
 
 
@@ -630,30 +627,42 @@ def train_detector(config: TrainConfig) -> dict[str, Any]:
                 if should_save_viz:
                     snapshot = getattr(trainer, "_dino_viz_snapshot", None)
                     if snapshot is not None:
-                        save_dir_cb = Path(getattr(trainer, "save_dir", project_dir / config.name))
-                        viz_dir = save_dir_cb / "dino_viz" / f"epoch_{current_epoch:03d}"
+                        artifact_dir = config.artifacts_root / "train_artifacts"
+                        tmp_dir = artifact_dir / "_dino_tmp"
+                        dino_path = artifact_dir / "dino_distill.png"
                         try:
+                            if tmp_dir.exists():
+                                shutil.rmtree(tmp_dir, ignore_errors=True)
+                            artifact_dir.mkdir(parents=True, exist_ok=True)
                             viz_result = save_dino_visualizations(
                                 snapshot=snapshot,
-                                output_dir=viz_dir,
-                                max_samples=config.dino_viz_max_samples,
+                                output_dir=tmp_dir,
+                                max_samples=1,
                             )
+                            files = [Path(str(p)) for p in viz_result.get("files", [])]
+                            preferred = next((p for p in files if "distill_signal_overlay" in p.name), None)
+                            if preferred is None:
+                                preferred = next((p for p in files if "teacher_overlay" in p.name), None)
+                            if preferred is not None and preferred.exists():
+                                shutil.copy2(preferred, dino_path)
                             dino_viz_records.append(
                                 {
                                     "epoch": current_epoch,
-                                    "output_dir": str(viz_dir),
-                                    "files_written": len(viz_result.get("files", [])),
-                                    "files": viz_result.get("files", []),
+                                    "artifact": str(dino_path),
+                                    "source": str(preferred) if preferred is not None else None,
                                 }
                             )
                         except Exception as exc:
                             dino_viz_records.append(
                                 {
                                     "epoch": current_epoch,
-                                    "output_dir": str(viz_dir),
+                                    "artifact": str(dino_path),
                                     "error": str(exc),
                                 }
                             )
+                        finally:
+                            if tmp_dir.exists():
+                                shutil.rmtree(tmp_dir, ignore_errors=True)
 
             if not config.eval_enabled or config.periodic_eval_mode == "off":
                 return

@@ -113,6 +113,7 @@ just generate-dataset   # Synthesize training data
 just check-dataset      # Validate augmented data
 just tune-gpu           # One-time GPU tuning for safe max utilization
 just train              # Train with distillation
+just optimize           # Export + compile TensorRT engine
 just eval               # Run inference + grading
 just review             # Visual inspection (GUI)
 
@@ -160,9 +161,10 @@ All stages read from the same config. See `pipeline-config` for schema details.
 | `augment-checker` | Data validation | 5 |
 | `gpu-auto-tuner` | Offline GPU tuning and config writeback | 6 |
 | `detector-train` | YOLO + DINOv3 training | 7 |
-| `detector-infer` | Batch inference | 8 |
-| `detector-grader` | Geometric evaluation | 9 |
-| `detector-reviewer` | Visual review GUI | 10 |
+| `detector-optimize` | ONNX export + TensorRT compile | 8 |
+| `detector-infer` | Batch inference | 9 |
+| `detector-grader` | Geometric evaluation | 10 |
+| `detector-reviewer` | Visual review GUI | 11 |
 | `pipeline-profile` | Performance profiling | - |
 | `dinov3` | Teacher model bridge | Component |
 

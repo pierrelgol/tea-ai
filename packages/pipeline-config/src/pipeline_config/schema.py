@@ -124,10 +124,16 @@ def load_pipeline_config(path: Path | str = "config.json") -> PipelineConfig:
             "name",
             "augmented_subdir",
             "splits",
+            "train_zip",
         },
         "dataset",
-        required={"name", "augmented_subdir", "splits"},
+        required={"name", "augmented_subdir", "splits", "train_zip"},
     )
+    dataset = {
+        **dataset,
+        "name": run_norm["dataset"],
+        "train_zip": _resolve_path(config_root, str(dataset["train_zip"])),
+    }
 
     generator = _expect_dict(payload.get("generator", {}), "generator")
     _expect_keys(generator, {"seed"}, "generator", required={"seed"})

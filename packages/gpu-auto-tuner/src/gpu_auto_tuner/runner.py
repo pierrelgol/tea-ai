@@ -3,9 +3,13 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-import subprocess
 import tempfile
 import time
+import traceback
+
+from detector_train.cli import build_train_config
+from detector_train.trainer import train_detector
+from pipeline_config import load_pipeline_config
 
 from .system import GpuMonitor
 
@@ -69,23 +73,30 @@ def run_trial_via_detector_train(
     trial_cfg_path = tmp_dir / "trial_config.json"
     _write_json(trial_cfg_path, trial_payload)
 
-    cmd = ["uv", "run", "detector-train", "--config", str(trial_cfg_path)]
     monitor = GpuMonitor(index=gpu_index, interval_s=0.5)
     monitor.start()
     start = time.perf_counter()
-    proc = subprocess.run(cmd, cwd=str(config_path_hint.parent), capture_output=True, text=True)
+    success = False
+    return_code = 0
+    tail = ""
+    try:
+        shared = load_pipeline_config(trial_cfg_path)
+        config = build_train_config(shared)
+        train_detector(config)
+        success = True
+    except Exception:
+        return_code = 1
+        tail = traceback.format_exc(limit=40)[-4000:]
     elapsed = time.perf_counter() - start
     sample = monitor.stop()
 
-    tail = "\n".join((proc.stdout or "").splitlines()[-60:])
-    err = (proc.stderr or "")
-    msg = f"{tail}\n{err}".lower()
+    msg = tail.lower()
     oom = "out of memory" in msg and "cuda" in msg
 
     return TrialResult(
-        success=proc.returncode == 0,
+        success=success,
         oom=oom,
-        return_code=int(proc.returncode),
+        return_code=int(return_code),
         elapsed_s=float(elapsed),
         peak_vram_mb=sample.peak_vram_mb,
         avg_gpu_util_percent=sample.avg_util_percent,

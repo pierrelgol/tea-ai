@@ -61,7 +61,7 @@ Stages run sequentially with dependency chain:
 
 | # | Stage | Command | Status |
 |---|-------|---------|--------|
-| 1 | fetch-dataset | `dataset-fetcher` | Auto |
+| 1 | fetch-dataset | `dataset-extractor` | Auto |
 | 2 | fetch-dinov3 | `dinov3-fetcher` | Auto |
 | 3 | label-targets | — | **Skipped** (requires GUI) |
 | 4 | generate-dataset | `dataset-generator` | Auto |

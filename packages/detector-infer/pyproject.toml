@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 detector-infer = "detector_infer.cli:main"
+detector-infer-benchmark = "detector_infer.benchmark_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/detector_infer"]

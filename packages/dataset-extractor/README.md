@@ -1,4 +1,4 @@
-# dataset-fetcher
+# dataset-extractor
 
 Declarative dataset acquisition with support for remote URLs, local paths, and deterministic subsetting.
 
@@ -219,8 +219,7 @@ Raises `RuntimeError` on failure with descriptive message.
 
 ```python
 from pathlib import Path
-from dataset_fetcher.profiles import resolve_profile
-from dataset_fetcher.fetch import fetch_dataset
+from dataset_extractor.cli import main
 
 # Load profile from configs/datasets/
 profile, _ = resolve_profile("coco128", profile_path=None)
@@ -238,7 +237,7 @@ print(f"Dataset ready at: {dataset_path}")
 
 ```bash
 # Fetch from configured source
-uv run dataset-fetcher --config config.json
+uv run dataset-extractor --config config.json
 ```
 
 Reads `config.run.dataset` to determine which profile to fetch.
@@ -282,7 +281,7 @@ Called by `just fetch-dataset`:
 ```bash
 # Justfile
 fetch-dataset:
-    uv run dataset-fetcher --config config.json
+    uv run dataset-extractor --config config.json
 ```
 
 The fetcher reads the pipeline config to determine:

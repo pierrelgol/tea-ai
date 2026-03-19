@@ -43,10 +43,15 @@ def sample_valid_homography(
     bg_area = background_w * background_h
     min_area = params.min_quad_area_frac * bg_area
     jitter_factor = 1.0 + 2.0 * float(max(params.perspective_jitter, 0.0))
-    max_fit_scale = min(background_w / (src_w * jitter_factor), background_h / (src_h * jitter_factor))
+    max_fit_scale = min(
+        background_w / (src_w * jitter_factor),
+        background_h / (src_h * jitter_factor),
+    )
     scale_upper = min(params.scale_max, max_fit_scale * 0.95)
     if scale_upper <= 0:
-        raise RuntimeError("No feasible scale for current target/background geometry")
+        raise RuntimeError(
+            "No feasible scale for current target/background geometry"
+        )
     scale_lower = min(params.scale_min, scale_upper)
 
     def _sample_center(
@@ -59,8 +64,16 @@ def sample_valid_homography(
                 return float(low)
             return float(rng.uniform(low, high))
 
-        cx0 = background_w * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_w
-        cy0 = background_h * 0.5 + float(rng.uniform(-params.translate_frac, params.translate_frac)) * background_h
+        cx0 = (
+            background_w * 0.5
+            + float(rng.uniform(-params.translate_frac, params.translate_frac))
+            * background_w
+        )
+        cy0 = (
+            background_h * 0.5
+            + float(rng.uniform(-params.translate_frac, params.translate_frac))
+            * background_h
+        )
         if rng.random() >= params.edge_bias_prob:
             return (
                 float(np.clip(cx0, margin_x, background_w - margin_x)),
@@ -74,14 +87,18 @@ def sample_valid_homography(
             cx = _u(margin_x, min(background_w - margin_x, band_x))
             cy = _u(margin_y, background_h - margin_y)
         elif edge == 1:
-            cx = _u(max(margin_x, background_w - band_x), background_w - margin_x)
+            cx = _u(
+                max(margin_x, background_w - band_x), background_w - margin_x
+            )
             cy = _u(margin_y, background_h - margin_y)
         elif edge == 2:
             cx = _u(margin_x, background_w - margin_x)
             cy = _u(margin_y, min(background_h - margin_y, band_y))
         else:
             cx = _u(margin_x, background_w - margin_x)
-            cy = _u(max(margin_y, background_h - band_y), background_h - margin_y)
+            cy = _u(
+                max(margin_y, background_h - band_y), background_h - margin_y
+            )
         return (
             float(np.clip(cx, margin_x, background_w - margin_x)),
             float(np.clip(cy, margin_y, background_h - margin_y)),
@@ -111,7 +128,9 @@ def sample_valid_homography(
             dtype=np.float32,
         )
 
-        jitter = rng.uniform(-jitter_mag, jitter_mag, size=(4, 2)).astype(np.float32)
+        jitter = rng.uniform(-jitter_mag, jitter_mag, size=(4, 2)).astype(
+            np.float32
+        )
         dst_quad = base_rect + jitter
 
         if not is_convex_quad(dst_quad):
@@ -122,6 +141,10 @@ def sample_valid_homography(
             continue
 
         H = cv2.getPerspectiveTransform(canonical, dst_quad)
-        return HomographySample(H=H.astype(np.float64), quad_px=dst_quad.astype(np.float32))
+        return HomographySample(
+            H=H.astype(np.float64), quad_px=dst_quad.astype(np.float32)
+        )
 
-    raise RuntimeError("Could not sample a valid homography within max attempts")
+    raise RuntimeError(
+        "Could not sample a valid homography within max attempts"
+    )

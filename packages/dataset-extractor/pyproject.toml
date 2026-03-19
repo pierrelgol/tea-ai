@@ -3,9 +3,9 @@ requires = ["hatchling>=1.24.2"]
 build-backend = "hatchling.build"
 
 [project]
-name = "dataset-fetcher"
+name = "dataset-extractor"
 version = "0.1.0"
-description = "Fetch and prepare datasets for tea-ai"
+description = "Extract and prepare datasets for tea-ai"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-dataset-fetcher = "dataset_fetcher.cli:main"
+dataset-extractor = "dataset_extractor.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/dataset_fetcher"]
+packages = ["src/dataset_extractor"]

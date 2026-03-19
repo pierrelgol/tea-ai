@@ -6,6 +6,7 @@ import hashlib
 from pathlib import Path
 import re
 import subprocess
+from typing import Any
 
 from pipeline_config import build_layout, load_pipeline_config
 from pipeline_runtime_utils import resolve_device
@@ -14,23 +15,37 @@ from .config import TrainConfig
 from .trainer import train_detector
 
 HF_DEFAULT_ALIAS = "hf-openvision-yolo26-n-obb"
+HF_ALIAS_PREFIX = "hf-"
+HF_OPENVISION_PREFIX = "openvision/"
+
+
+def _resolve_hf_repo_id(model_arg: str) -> str | None:
+    normalized = model_arg.strip()
+    if normalized.startswith(HF_OPENVISION_PREFIX):
+        return normalized
+    if normalized.startswith(HF_ALIAS_PREFIX):
+        candidate = normalized[len(HF_ALIAS_PREFIX):]
+        if candidate.startswith(HF_OPENVISION_PREFIX):
+            return candidate
+    return None
 
 
 def _resolve_model_arg(model_arg: str) -> str:
-    if model_arg != HF_DEFAULT_ALIAS:
+    repo_id = _resolve_hf_repo_id(model_arg)
+    if repo_id is None:
         return model_arg
     try:
         from huggingface_hub import hf_hub_download
 
         return str(
             hf_hub_download(
-                repo_id="openvision/yolo26-n-obb",
+                repo_id=repo_id,
                 filename="model.pt",
             )
         )
     except Exception as exc:
         raise RuntimeError(
-            "failed to resolve default HF OBB model; set run.model to a local OBB .pt path"
+            f"failed to resolve HF OBB model '{repo_id}'; set run.model to a local OBB .pt path"
         ) from exc
 
 
@@ -95,35 +110,28 @@ def _resolve_wandb_run_name(*, shared, run_id: str, model_key: str, dataset_name
     return name[:128]
 
 
-def _enforce_tuner_lock(shared) -> None:
+def describe_tuner_state(shared) -> str | None:
     tuner_cfg = shared.tuner if isinstance(shared.tuner, dict) else {}
     if not bool(tuner_cfg.get("enabled", True)):
-        return
+        return None
     resolved = resolve_device(str(shared.train.get("device", "auto")))
     if resolved in {"cpu", "mps"}:
-        return
+        return None
     tuned_sig = shared.train.get("tuned_gpu_signature")
     if not isinstance(tuned_sig, str) or not tuned_sig.strip():
-        raise RuntimeError(
-            "missing train.tuned_gpu_signature for current configuration; run `just tune-gpu` before training"
-        )
+        return "tuner: proceeding without tuned GPU profile"
     current_sig = _current_gpu_signature(resolved)
     if current_sig is None:
-        raise RuntimeError("failed to detect current GPU signature; run `just tune-gpu` after fixing CUDA visibility")
+        return "tuner: unable to detect current GPU signature; proceeding without verification"
     if current_sig != tuned_sig:
-        raise RuntimeError(
-            f"tuned GPU signature mismatch (config={tuned_sig}, current={current_sig}); run `just tune-gpu` before training"
+        return (
+            f"tuner: tuned GPU signature mismatch "
+            f"(config={tuned_sig}, current={current_sig}); proceeding with runtime auto-batch behavior"
         )
+    return None
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Train detector model")
-    parser.add_argument("--config", type=Path, default=Path("config.json"))
-    args = parser.parse_args()
-
-    shared = load_pipeline_config(args.config)
-    _enforce_tuner_lock(shared)
-
+def build_train_config(shared) -> TrainConfig:
     dataset_name = str(shared.dataset.get("name") or shared.run["dataset"])
     dataset_root = shared.paths["dataset_root"] / str(shared.dataset.get("augmented_subdir", "augmented")) / dataset_name
 
@@ -136,8 +144,8 @@ def main() -> None:
     )
     model_path = _resolve_model_arg(str(shared.run["model"]))
 
-    tc = shared.train
-    config = TrainConfig(
+    tc: dict[str, Any] = shared.train
+    return TrainConfig(
         dataset_root=dataset_root,
         artifacts_root=layout.run_root,
         project=layout.train_root / "ultralytics",
@@ -233,9 +241,26 @@ def main() -> None:
         eval_viz_split=str(tc.get("eval_viz_split", "val")),
     )
 
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Train detector model")
+    parser.add_argument("--config", type=Path, default=Path("config.json"))
+    args = parser.parse_args()
+
+    shared = load_pipeline_config(args.config)
+    tuner_note = describe_tuner_state(shared)
+    config = build_train_config(shared)
+
     summary = train_detector(config)
     print(f"status: {summary['status']}")
     if summary["status"] == "ok":
+        if tuner_note:
+            print(tuner_note)
+        layout = build_layout(
+            artifacts_root=shared.paths["artifacts_root"],
+            model_key=str(shared.run["model_key"]),
+            run_id=str(shared.run["run_id"]),
+        )
         print(f"run_root: {layout.run_root}")
         print(f"run_dir: {summary['artifacts']['save_dir']}")
         print(f"best_weights: {summary['artifacts']['weights_best']}")

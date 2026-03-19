@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from dataclasses import dataclass
+import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 from typing import Any
@@ -41,6 +44,22 @@ class SampleResult:
     image_out_path: Path
     label_out_path: Path
     metadata_out_path: Path
+
+
+@dataclass(slots=True)
+class SampleTask:
+    ordinal: int
+    split: str
+    bg_path: Path
+    sample_idx: int
+    seed: int
+
+
+@dataclass(slots=True)
+class RenderedSample:
+    task: SampleTask
+    result: SampleResult | None
+    angle_bin_counts: np.ndarray
 
 
 @dataclass(slots=True)
@@ -90,7 +109,12 @@ def _scaled_homography_params_for_target_count(
     return replace(base, scale_min=scaled_min, scale_max=scaled_max)
 
 
-def _is_valid_projected_obb(projected_corners: np.ndarray, image_w: int, image_h: int, config: GeneratorConfig) -> bool:
+def _is_valid_projected_obb(
+    projected_corners: np.ndarray,
+    image_w: int,
+    image_h: int,
+    config: GeneratorConfig,
+) -> bool:
     if projected_corners.shape != (4, 2):
         return False
     if not is_convex_quad(projected_corners):
@@ -118,9 +142,14 @@ def _is_valid_projected_obb(projected_corners: np.ndarray, image_w: int, image_h
         n_next = float(np.linalg.norm(v_next))
         if n_prev <= 1e-9 or n_next <= 1e-9:
             return False
-        c = float(np.clip(np.dot(v_prev, v_next) / (n_prev * n_next), -1.0, 1.0))
+        c = float(
+            np.clip(np.dot(v_prev, v_next) / (n_prev * n_next), -1.0, 1.0)
+        )
         angle = float(np.degrees(np.arccos(c)))
-        if angle < config.min_corner_angle_deg or angle > config.max_corner_angle_deg:
+        if (
+            angle < config.min_corner_angle_deg
+            or angle > config.max_corner_angle_deg
+        ):
             return False
     return True
 
@@ -195,6 +224,29 @@ def _load_hard_class_boosts(path: Path | None) -> dict[int, float]:
     return out
 
 
+def _stable_task_seed(
+    *, base_seed: int, split: str, bg_path: Path, sample_idx: int
+) -> int:
+    raw = f"{base_seed}:{split}:{bg_path.resolve()}:{sample_idx}"
+    digest = hashlib.sha1(raw.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], byteorder="little", signed=False)
+
+
+def _resolve_generation_workers(num_tasks: int) -> int:
+    env_value = os.environ.get("TEA_AI_GENERATOR_THREADS")
+    if env_value is not None and env_value.strip():
+        try:
+            requested = int(env_value)
+        except ValueError:
+            requested = 0
+        if requested > 0:
+            return max(1, min(num_tasks, requested))
+    cpu_count = os.cpu_count() or 4
+    if num_tasks <= 1:
+        return 1
+    return max(1, min(num_tasks, cpu_count))
+
+
 def _resolve_curriculum_context(config: GeneratorConfig) -> dict[str, Any]:
     if not config.curriculum_enabled:
         return {
@@ -211,14 +263,20 @@ def _resolve_curriculum_context(config: GeneratorConfig) -> dict[str, Any]:
     perspective_mult = 0.7
     occlusion_mult = 0.75
     reports_dir = config.output_root / "grade_reports"
-    candidates = sorted(reports_dir.glob("grade_report_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates = sorted(
+        reports_dir.glob("grade_report_*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     if candidates:
         report_path = candidates[0]
         try:
             payload = json.loads(report_path.read_text(encoding="utf-8"))
             vals: list[float] = []
             for split in payload.get("aggregate", {}).get("splits", []):
-                value = split.get("geometry", {}).get("orientation_within_10deg_rate")
+                value = split.get("geometry", {}).get(
+                    "orientation_within_10deg_rate"
+                )
                 if value is not None:
                     vals.append(float(value))
             if vals:
@@ -227,11 +285,17 @@ def _resolve_curriculum_context(config: GeneratorConfig) -> dict[str, Any]:
             orientation_rate = None
 
     if orientation_rate is not None:
-        if orientation_rate >= config.curriculum_orientation_metric_threshold_hard:
+        if (
+            orientation_rate
+            >= config.curriculum_orientation_metric_threshold_hard
+        ):
             stage = "hard"
             perspective_mult = 1.2
             occlusion_mult = 1.15
-        elif orientation_rate >= config.curriculum_orientation_metric_threshold_medium:
+        elif (
+            orientation_rate
+            >= config.curriculum_orientation_metric_threshold_medium
+        ):
             stage = "medium"
             perspective_mult = 1.0
             occlusion_mult = 1.0
@@ -264,7 +328,9 @@ def _try_place_target(
         rng=rng,
         params=homography_params,
     )
-    projected_corners_raw = apply_homography_to_points(hs.H, target.canonical_corners_px)
+    projected_corners_raw = apply_homography_to_points(
+        hs.H, target.canonical_corners_px
+    )
     if not _is_valid_projected_obb(projected_corners_raw, bg_w, bg_h, config):
         return None
     projected_corners_rect = _fit_rectangular_obb(projected_corners_raw)
@@ -273,7 +339,9 @@ def _try_place_target(
     raw_rect_iou = _polygon_iou(projected_corners_raw, projected_corners_rect)
     if raw_rect_iou < MIN_RAW_RECT_IOU:
         return None
-    projected_corners_norm = corners_px_to_yolo_obb(projected_corners_rect, bg_w, bg_h)
+    projected_corners_norm = corners_px_to_yolo_obb(
+        projected_corners_rect, bg_w, bg_h
+    )
 
     warped_target, warped_mask = warp_target_and_mask(
         target=target_image,
@@ -282,9 +350,13 @@ def _try_place_target(
         out_w=bg_w,
         out_h=bg_h,
     )
-    ratio_visible = visible_ratio(warped_mask=warped_mask, occupancy_mask=occupancy_mask)
+    ratio_visible = visible_ratio(
+        warped_mask=warped_mask, occupancy_mask=occupancy_mask
+    )
     occlusion_ratio = 1.0 - ratio_visible
-    if (not config.allow_partial_visibility and ratio_visible < 0.999) or occlusion_ratio > max_occlusion_ratio:
+    if (
+        not config.allow_partial_visibility and ratio_visible < 0.999
+    ) or occlusion_ratio > max_occlusion_ratio:
         return None
 
     class_id_exported = config.class_offset_base + target.class_id_local
@@ -315,6 +387,176 @@ def _try_place_target(
     )
 
 
+def _render_sample(
+    *,
+    task: SampleTask,
+    targets: list[CanonicalTarget],
+    target_images_cache: dict[str, np.ndarray],
+    target_indices_by_class: dict[int, list[int]],
+    class_ids_np: np.ndarray,
+    class_weights: np.ndarray,
+    config: GeneratorConfig,
+    curriculum: dict[str, Any],
+    homography_params: HomographyParams,
+    effective_max_occlusion: float,
+    angle_bin_counts_snapshot: np.ndarray,
+) -> RenderedSample:
+    background = cv2.imread(str(task.bg_path), cv2.IMREAD_COLOR)
+    if background is None:
+        return RenderedSample(
+            task=task,
+            result=None,
+            angle_bin_counts=np.zeros(12, dtype=np.int32),
+        )
+
+    rng = np.random.default_rng(task.seed)
+    bg_h, bg_w = background.shape[:2]
+    planned_empty = bool(rng.random() < config.empty_sample_prob)
+    if planned_empty:
+        n_targets = 0
+    else:
+        n_targets = int(
+            rng.integers(
+                config.targets_per_image_min, config.targets_per_image_max + 1
+            )
+        )
+
+    sample_homography_params = _scaled_homography_params_for_target_count(
+        base=homography_params,
+        n_targets=n_targets,
+        config=config,
+    )
+    composited = background.copy()
+    occupancy_mask = np.zeros((bg_h, bg_w), dtype=bool)
+    placed: list[PlacedTarget] = []
+    local_angle_bins = np.zeros(12, dtype=np.int32)
+    angle_bin_counts = angle_bin_counts_snapshot.astype(np.int32).copy()
+
+    for _ in range(n_targets):
+        placed_target: PlacedTarget | None = None
+        placed_score = -1.0
+        for _attempt in range(config.max_attempts):
+            if len(class_ids_np) > 0:
+                picked_class = int(rng.choice(class_ids_np, p=class_weights))
+                candidates = target_indices_by_class.get(picked_class, [])
+                if candidates:
+                    target = targets[
+                        int(candidates[int(rng.integers(0, len(candidates)))])
+                    ]
+                else:
+                    target = targets[int(rng.integers(0, len(targets)))]
+            else:
+                target = targets[int(rng.integers(0, len(targets)))]
+
+            target_image = target_images_cache.get(str(target.image_path))
+            if target_image is None:
+                continue
+            candidate = _try_place_target(
+                background=composited,
+                target=target,
+                target_image=target_image,
+                occupancy_mask=occupancy_mask,
+                homography_params=sample_homography_params,
+                max_occlusion_ratio=effective_max_occlusion,
+                rng=rng,
+                config=config,
+            )
+            if candidate is None:
+                continue
+
+            angle_deg = _principal_angle_deg(candidate.projected_corners_px)
+            angle_idx = _angle_bin(angle_deg)
+            max_count = (
+                int(np.max(angle_bin_counts))
+                if int(np.sum(angle_bin_counts)) > 0
+                else 0
+            )
+            rarity_ratio = float(
+                (max_count + 1) / float(angle_bin_counts[angle_idx] + 1)
+            )
+            rarity_bonus = rarity_ratio ** float(config.angle_balance_strength)
+            area_px = polygon_area(candidate.projected_corners_px)
+            area_ratio = float(
+                np.clip(area_px / max(1.0, float(bg_w * bg_h)), 0.0, 1.0)
+            )
+            size_penalty = 1.0 - area_ratio
+            score = 0.75 * rarity_bonus + 0.25 * size_penalty
+            if score > placed_score:
+                placed_score = score
+                candidate.placement["principal_angle_deg"] = angle_deg
+                placed_target = candidate
+
+        if placed_target is None:
+            continue
+
+        composited = blend_layer(
+            background=composited,
+            warped_target=placed_target.warped_target,
+            warped_mask=placed_target.warped_mask,
+            feather_px=5,
+        )
+        occupancy_mask = occupancy_mask | (placed_target.warped_mask > 0)
+        placed.append(placed_target)
+        angle_deg = float(
+            placed_target.placement.get(
+                "principal_angle_deg",
+                _principal_angle_deg(placed_target.projected_corners_px),
+            )
+        )
+        angle_idx = _angle_bin(angle_deg)
+        local_angle_bins[angle_idx] += 1
+        angle_bin_counts[angle_idx] += 1
+
+    if not placed and n_targets > 0:
+        return RenderedSample(
+            task=task, result=None, angle_bin_counts=local_angle_bins
+        )
+
+    composited, photometric_applied = apply_photometric_stack(
+        composited, rng=rng, config=config
+    )
+    labels_out = [
+        (p.class_id_exported, p.projected_corners_norm) for p in placed
+    ]
+
+    stem = _output_stem(task.split, task.bg_path.stem, task.sample_idx)
+    image_out_path = (
+        config.output_root
+        / "images"
+        / task.split
+        / f"{stem}{task.bg_path.suffix}"
+    )
+    label_out_path = config.output_root / "labels" / task.split / f"{stem}.txt"
+    meta_out_path = config.output_root / "meta" / task.split / f"{stem}.json"
+
+    image_out_path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(image_out_path), composited)
+    write_yolo_obb_labels(label_out_path, labels_out)
+
+    metadata = {
+        "seed": config.seed,
+        "sample_seed": int(task.seed),
+        "generator_version": config.generator_version,
+        "background_dataset_name": config.background_dataset_name,
+        "curriculum": curriculum,
+        "background_image": str(task.bg_path),
+        "num_targets": len(placed),
+        "planned_empty": planned_empty,
+        "photometric_applied": photometric_applied,
+        "targets": [p.placement for p in placed],
+    }
+    write_metadata(meta_out_path, metadata)
+    return RenderedSample(
+        task=task,
+        result=SampleResult(
+            image_out_path=image_out_path,
+            label_out_path=label_out_path,
+            metadata_out_path=meta_out_path,
+        ),
+        angle_bin_counts=local_angle_bins,
+    )
+
+
 def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
     config.validate()
     if config.output_root.exists():
@@ -329,27 +571,48 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
     curriculum = _resolve_curriculum_context(config)
     target_indices_by_class: dict[int, list[int]] = {}
     for idx, target in enumerate(targets):
-        target_indices_by_class.setdefault(int(target.class_id_local), []).append(idx)
+        target_indices_by_class.setdefault(
+            int(target.class_id_local), []
+        ).append(idx)
     hard_boost_raw = _load_hard_class_boosts(config.hard_examples_path)
     class_ids = sorted(target_indices_by_class.keys())
-    class_ids_np = np.array(class_ids, dtype=np.int32) if class_ids else np.zeros((0,), dtype=np.int32)
+    class_ids_np = (
+        np.array(class_ids, dtype=np.int32)
+        if class_ids
+        else np.zeros((0,), dtype=np.int32)
+    )
     class_weights = np.ones((len(class_ids),), dtype=np.float64)
     if class_ids:
-        frequencies = np.array([len(target_indices_by_class[cid]) for cid in class_ids], dtype=np.float64)
+        frequencies = np.array(
+            [len(target_indices_by_class[cid]) for cid in class_ids],
+            dtype=np.float64,
+        )
         if float(np.sum(frequencies)) > 0:
-            balance_weights = (1.0 / np.maximum(frequencies, 1.0)) ** float(config.class_balance_strength)
-            balance_weights = balance_weights / max(float(np.sum(balance_weights)), 1e-9)
+            balance_weights = (1.0 / np.maximum(frequencies, 1.0)) ** float(
+                config.class_balance_strength
+            )
+            balance_weights = balance_weights / max(
+                float(np.sum(balance_weights)), 1e-9
+            )
         else:
             balance_weights = np.ones_like(frequencies)
-        max_boost = max([hard_boost_raw.get(cid, 0.0) for cid in class_ids], default=0.0)
+        max_boost = max(
+            [hard_boost_raw.get(cid, 0.0) for cid in class_ids], default=0.0
+        )
         for i, cid in enumerate(class_ids):
-            rel = 0.0 if max_boost <= 0 else (hard_boost_raw.get(cid, 0.0) / max_boost)
+            rel = (
+                0.0
+                if max_boost <= 0
+                else (hard_boost_raw.get(cid, 0.0) / max_boost)
+            )
             hard_weight = 1.0 + float(config.hard_example_boost) * rel
             class_weights[i] = float(balance_weights[i]) * hard_weight
         class_weights = class_weights / max(float(np.sum(class_weights)), 1e-9)
 
     backgrounds_by_split = load_backgrounds_by_split(config.background_splits)
-    backgrounds_by_split, enforced_audit = enforce_disjoint_background_splits(backgrounds_by_split)
+    backgrounds_by_split, enforced_audit = enforce_disjoint_background_splits(
+        backgrounds_by_split
+    )
     split_audit = {
         "enforced": int(enforced_audit.get("original_overlap_count", 0)) > 0,
         "post_enforcement": enforced_audit,
@@ -358,150 +621,119 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
     write_metadata(config.output_root / "split_audit.json", split_audit)
     target_images_cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
     max_target_cache_items = 256
+    for target in targets:
+        key = str(target.image_path)
+        if key in target_images_cache:
+            continue
+        image = cv2.imread(str(target.image_path), cv2.IMREAD_COLOR)
+        if image is None:
+            continue
+        target_images_cache[key] = image
+        if len(target_images_cache) > max_target_cache_items:
+            target_images_cache.popitem(last=False)
 
     _ensure_output_layout(config.output_root)
-    write_augmented_classes(config.output_root, target_classes, config.class_offset_base)
+    write_augmented_classes(
+        config.output_root, target_classes, config.class_offset_base
+    )
 
     homography_params = HomographyParams(
         scale_min=config.scale_min,
         scale_max=config.scale_max,
         translate_frac=config.translate_frac,
-        perspective_jitter=config.perspective_jitter * float(curriculum["perspective_mult"]),
+        perspective_jitter=config.perspective_jitter
+        * float(curriculum["perspective_mult"]),
         min_quad_area_frac=config.min_quad_area_frac,
         max_attempts=config.max_attempts,
         edge_bias_prob=config.edge_bias_prob,
         edge_band_frac=config.edge_band_frac,
     )
-    effective_max_occlusion = float(np.clip(config.max_occlusion_ratio * float(curriculum["occlusion_mult"]), 0.0, 0.95))
-    rng = np.random.default_rng(config.seed)
+    effective_max_occlusion = float(
+        np.clip(
+            config.max_occlusion_ratio * float(curriculum["occlusion_mult"]),
+            0.0,
+            0.95,
+        )
+    )
     angle_bin_counts = np.zeros(12, dtype=np.int32)
     results: list[SampleResult] = []
-
+    base_seed = int(config.seed or 0)
+    tasks: list[SampleTask] = []
+    ordinal = 0
     for split in ("train", "val"):
-        backgrounds = backgrounds_by_split.get(split, [])
-        for bg_path in backgrounds:
-            background = cv2.imread(str(bg_path), cv2.IMREAD_COLOR)
-            if background is None:
-                continue
-            bg_h, bg_w = background.shape[:2]
-
+        for bg_path in backgrounds_by_split.get(split, []):
             for sample_idx in range(config.samples_per_background):
-                planned_empty = bool(rng.random() < config.empty_sample_prob)
-                if planned_empty:
-                    n_targets = 0
-                else:
-                    n_targets = int(rng.integers(config.targets_per_image_min, config.targets_per_image_max + 1))
-                sample_homography_params = _scaled_homography_params_for_target_count(
-                    base=homography_params,
-                    n_targets=n_targets,
-                    config=config,
-                )
-                composited = background.copy()
-                occupancy_mask = np.zeros((bg_h, bg_w), dtype=bool)
-                placed: list[PlacedTarget] = []
-
-                for _ in range(n_targets):
-                    placed_target: PlacedTarget | None = None
-                    placed_score = -1.0
-                    for _attempt in range(config.max_attempts):
-                        if class_ids:
-                            picked_class = int(rng.choice(class_ids_np, p=class_weights))
-                            candidates = target_indices_by_class.get(picked_class, [])
-                            if candidates:
-                                target = targets[int(candidates[int(rng.integers(0, len(candidates)))])]
-                            else:
-                                target = targets[int(rng.integers(0, len(targets)))]
-                        else:
-                            target = targets[int(rng.integers(0, len(targets)))]
-                        key = str(target.image_path)
-                        if key not in target_images_cache:
-                            image = cv2.imread(str(target.image_path), cv2.IMREAD_COLOR)
-                            if image is None:
-                                break
-                            target_images_cache[key] = image
-                            if len(target_images_cache) > max_target_cache_items:
-                                target_images_cache.popitem(last=False)
-                        else:
-                            target_images_cache.move_to_end(key, last=True)
-                        target_image = target_images_cache[key]
-                        candidate = _try_place_target(
-                            background=composited,
-                            target=target,
-                            target_image=target_image,
-                            occupancy_mask=occupancy_mask,
-                            homography_params=sample_homography_params,
-                            max_occlusion_ratio=effective_max_occlusion,
-                            rng=rng,
-                            config=config,
-                        )
-                        if candidate is not None:
-                            angle_deg = _principal_angle_deg(candidate.projected_corners_px)
-                            angle_idx = _angle_bin(angle_deg)
-                            max_count = int(np.max(angle_bin_counts)) if int(np.sum(angle_bin_counts)) > 0 else 0
-                            rarity_ratio = float((max_count + 1) / float(angle_bin_counts[angle_idx] + 1))
-                            rarity_bonus = rarity_ratio ** float(config.angle_balance_strength)
-                            area_px = polygon_area(candidate.projected_corners_px)
-                            area_ratio = float(np.clip(area_px / max(1.0, float(bg_w * bg_h)), 0.0, 1.0))
-                            size_penalty = 1.0 - area_ratio
-                            score = 0.75 * rarity_bonus + 0.25 * size_penalty
-                            if score > placed_score:
-                                placed_score = score
-                                candidate.placement["principal_angle_deg"] = angle_deg
-                                placed_target = candidate
-                    if placed_target is None:
-                        continue
-
-                    composited = blend_layer(
-                        background=composited,
-                        warped_target=placed_target.warped_target,
-                        warped_mask=placed_target.warped_mask,
-                        feather_px=5,
-                    )
-                    occupancy_mask = occupancy_mask | (placed_target.warped_mask > 0)
-                    placed.append(placed_target)
-                    angle_deg = float(
-                        placed_target.placement.get(
-                            "principal_angle_deg",
-                            _principal_angle_deg(placed_target.projected_corners_px),
-                        )
-                    )
-                    angle_bin_counts[_angle_bin(angle_deg)] += 1
-
-                if not placed and n_targets > 0:
-                    continue
-
-                composited, photometric_applied = apply_photometric_stack(composited, rng=rng, config=config)
-                labels_out = [(p.class_id_exported, p.projected_corners_norm) for p in placed]
-
-                stem = _output_stem(split, bg_path.stem, sample_idx)
-                image_out_path = config.output_root / "images" / split / f"{stem}{bg_path.suffix}"
-                label_out_path = config.output_root / "labels" / split / f"{stem}.txt"
-                meta_out_path = config.output_root / "meta" / split / f"{stem}.json"
-
-                image_out_path.parent.mkdir(parents=True, exist_ok=True)
-                cv2.imwrite(str(image_out_path), composited)
-                write_yolo_obb_labels(label_out_path, labels_out)
-
-                metadata = {
-                    "seed": config.seed,
-                    "generator_version": config.generator_version,
-                    "background_dataset_name": config.background_dataset_name,
-                    "curriculum": curriculum,
-                    "background_image": str(bg_path),
-                    "num_targets": len(placed),
-                    "planned_empty": planned_empty,
-                    "photometric_applied": photometric_applied,
-                    "targets": [p.placement for p in placed],
-                }
-                write_metadata(meta_out_path, metadata)
-
-                results.append(
-                    SampleResult(
-                        image_out_path=image_out_path,
-                        label_out_path=label_out_path,
-                        metadata_out_path=meta_out_path,
+                tasks.append(
+                    SampleTask(
+                        ordinal=ordinal,
+                        split=split,
+                        bg_path=bg_path,
+                        sample_idx=sample_idx,
+                        seed=_stable_task_seed(
+                            base_seed=base_seed,
+                            split=split,
+                            bg_path=bg_path,
+                            sample_idx=sample_idx,
+                        ),
                     )
                 )
+                ordinal += 1
+
+    worker_count = _resolve_generation_workers(len(tasks))
+    original_cv2_threads = cv2.getNumThreads()
+    if worker_count > 1:
+        cv2.setNumThreads(1)
+    try:
+        batch_size = max(1, worker_count)
+        for batch_start in range(0, len(tasks), batch_size):
+            batch = tasks[batch_start : batch_start + batch_size]
+            snapshot = angle_bin_counts.copy()
+            if worker_count == 1:
+                rendered = [
+                    _render_sample(
+                        task=task,
+                        targets=targets,
+                        target_images_cache=target_images_cache,
+                        target_indices_by_class=target_indices_by_class,
+                        class_ids_np=class_ids_np,
+                        class_weights=class_weights,
+                        config=config,
+                        curriculum=curriculum,
+                        homography_params=homography_params,
+                        effective_max_occlusion=effective_max_occlusion,
+                        angle_bin_counts_snapshot=snapshot,
+                    )
+                    for task in batch
+                ]
+            else:
+                with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                    rendered = list(
+                        executor.map(
+                            lambda task: _render_sample(
+                                task=task,
+                                targets=targets,
+                                target_images_cache=target_images_cache,
+                                target_indices_by_class=target_indices_by_class,
+                                class_ids_np=class_ids_np,
+                                class_weights=class_weights,
+                                config=config,
+                                curriculum=curriculum,
+                                homography_params=homography_params,
+                                effective_max_occlusion=effective_max_occlusion,
+                                angle_bin_counts_snapshot=snapshot,
+                            ),
+                            batch,
+                        )
+                    )
+
+            rendered.sort(key=lambda item: item.task.ordinal)
+            for item in rendered:
+                angle_bin_counts += item.angle_bin_counts
+                if item.result is not None:
+                    results.append(item.result)
+    finally:
+        if worker_count > 1:
+            cv2.setNumThreads(original_cv2_threads)
 
     angle_counts = [int(v) for v in angle_bin_counts.tolist()]
     total_angles = max(1, int(sum(angle_counts)))
@@ -511,6 +743,7 @@ def generate_dataset(config: GeneratorConfig) -> list[SampleResult]:
         {
             "generator_version": config.generator_version,
             "curriculum": curriculum,
+            "worker_count": worker_count,
             "angle_bin_counts": angle_counts,
             "angle_bin_distribution": angle_distribution,
             "num_samples": len(results),

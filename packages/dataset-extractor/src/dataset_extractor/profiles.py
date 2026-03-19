@@ -6,12 +6,19 @@ from pathlib import Path
 
 
 @dataclass(slots=True)
+class BundleDownload:
+    dest_rel: str
+    urls: list[str]
+
+
+@dataclass(slots=True)
 class DatasetProfile:
     version: int
     name: str
     dataset_dir_name: str
     source_type: str
     urls: list[str]
+    bundle_downloads: list[BundleDownload]
     local_path: str | None
     subset_train_max_images: int | None
     subset_val_max_images: int | None
@@ -55,6 +62,13 @@ def load_profile(profile_path: Path) -> DatasetProfile:
             dataset_dir_name=str(payload["dataset_dir_name"]),
             source_type=str(source["type"]),
             urls=[str(u) for u in source.get("urls", [])],
+            bundle_downloads=[
+                BundleDownload(
+                    dest_rel=str(item["dest_rel"]),
+                    urls=[str(u) for u in item.get("urls", [])],
+                )
+                for item in source.get("downloads", [])
+            ],
             local_path=(str(source["local_path"]) if "local_path" in source else None),
             subset_train_max_images=(
                 int(source.get("subset", {}).get("train_max_images"))
@@ -85,11 +99,26 @@ def load_profile(profile_path: Path) -> DatasetProfile:
     except Exception as exc:  # pragma: no cover - schema errors
         raise ProfileError(f"invalid dataset profile schema: {profile_path}") from exc
 
-    if profile.source_type not in {"ultralytics_zip", "remote_zip", "local_dir", "coco_subset_local", "coco_ids_local"}:
+    if profile.source_type not in {
+        "ultralytics_zip",
+        "remote_zip",
+        "remote_zip_bundle",
+        "local_dir",
+        "coco_subset_local",
+        "coco_ids_local",
+    }:
         raise ProfileError(f"unsupported source.type in {profile_path}: {profile.source_type}")
 
     if profile.source_type in {"ultralytics_zip", "remote_zip"} and not profile.urls:
         raise ProfileError(f"profile {profile.name} requires non-empty source.urls")
+    if profile.source_type == "remote_zip_bundle":
+        if not profile.bundle_downloads:
+            raise ProfileError(f"profile {profile.name} requires non-empty source.downloads")
+        for item in profile.bundle_downloads:
+            if not item.dest_rel.strip():
+                raise ProfileError(f"profile {profile.name} has source.downloads entry with empty dest_rel")
+            if not item.urls:
+                raise ProfileError(f"profile {profile.name} has source.downloads entry without urls")
 
     if profile.source_type in {"local_dir", "coco_subset_local", "coco_ids_local"} and not profile.local_path:
         raise ProfileError(f"profile {profile.name} requires source.local_path")

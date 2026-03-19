@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 
 from pipeline_config import build_layout, load_pipeline_config
 
@@ -13,13 +14,23 @@ from .generator import generate_dataset
 def load_dataset_config(configs_root: Path, dataset_name: str) -> dict:
     config_path = configs_root / f"{dataset_name}.json"
     if not config_path.exists():
+        if re.fullmatch(r"coco\d+", dataset_name):
+            return {
+                "name": dataset_name,
+                "splits": {
+                    "train_images_rel": "images/train2017",
+                    "val_images_rel": "images/val2017",
+                },
+            }
         raise FileNotFoundError(f"dataset config not found: {config_path}")
     with config_path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate synthetic augmented dataset")
+    parser = argparse.ArgumentParser(
+        description="Generate synthetic augmented dataset"
+    )
     parser.add_argument("--config", type=Path, default=Path("config.json"))
     args = parser.parse_args()
 
@@ -27,7 +38,9 @@ def main() -> None:
     dataset_root = shared.paths["dataset_root"]
     dataset_name = str(shared.dataset.get("name") or shared.run["dataset"])
 
-    dataset_config = load_dataset_config(shared.paths["configs_root"], dataset_name)
+    dataset_config = load_dataset_config(
+        shared.paths["configs_root"], dataset_name
+    )
     splits = dataset_config.get("splits", {})
     train_rel = splits.get("train_images_rel", "images/train")
     val_rel = splits.get("val_images_rel", "images/val")
@@ -43,7 +56,11 @@ def main() -> None:
         run_id=str(shared.run["run_id"]),
     )
 
-    output_root = dataset_root / str(shared.dataset.get("augmented_subdir", "augmented")) / dataset_name
+    output_root = (
+        dataset_root
+        / str(shared.dataset.get("augmented_subdir", "augmented"))
+        / dataset_name
+    )
 
     config = GeneratorConfig(
         background_splits=background_splits,

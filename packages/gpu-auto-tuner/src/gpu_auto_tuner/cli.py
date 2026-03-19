@@ -13,7 +13,6 @@ from pipeline_config import build_layout, load_pipeline_config
 from pipeline_runtime_utils import resolve_device
 
 from .runner import TrialResult, run_trial_via_detector_train
-from .search import binary_search_max_feasible
 from .system import build_gpu_signature
 
 
@@ -113,7 +112,15 @@ def _build_search_space(tuner: dict[str, Any], train: dict[str, Any]) -> list[di
     tf32_values = [bool(v) for v in _safe_list(tuner.get("tf32_candidates"), [bool(train.get("tf32", True))])]
     cudnn_values = [bool(v) for v in _safe_list(tuner.get("cudnn_benchmark_candidates"), [bool(train.get("cudnn_benchmark", True))])]
 
-    out: list[dict[str, Any]] = []
+    scored: list[tuple[float, dict[str, Any]]] = []
+    preferred = {
+        "imgsz": int(train.get("imgsz", 512)),
+        "workers": int(train.get("workers", 8)),
+        "cache": str(train.get("cache", "disk")),
+        "amp": bool(train.get("amp", True)),
+        "tf32": bool(train.get("tf32", True)),
+        "cudnn_benchmark": bool(train.get("cudnn_benchmark", True)),
+    }
     for imgsz, workers, cache, amp, tf32, cudnn in itertools.product(
         imgsz_values,
         workers_values,
@@ -122,17 +129,99 @@ def _build_search_space(tuner: dict[str, Any], train: dict[str, Any]) -> list[di
         tf32_values,
         cudnn_values,
     ):
-        out.append(
-            {
-                "imgsz": int(imgsz),
-                "workers": int(workers),
-                "cache": str(cache),
-                "amp": bool(amp),
-                "tf32": bool(tf32),
-                "cudnn_benchmark": bool(cudnn),
-            }
-        )
-    return out
+        combo = {
+            "imgsz": int(imgsz),
+            "workers": int(workers),
+            "cache": str(cache),
+            "amp": bool(amp),
+            "tf32": bool(tf32),
+            "cudnn_benchmark": bool(cudnn),
+        }
+        score = 0.0
+        score -= abs(int(combo["imgsz"]) - int(preferred["imgsz"])) / max(1, int(preferred["imgsz"]))
+        score -= abs(int(combo["workers"]) - int(preferred["workers"])) * 0.05
+        if combo["cache"] == preferred["cache"]:
+            score += 2.0
+        elif combo["cache"] == "ram":
+            score += 1.0
+        if bool(combo["amp"]) == bool(preferred["amp"]):
+            score += 1.0
+        elif bool(combo["amp"]):
+            score += 0.5
+        if bool(combo["tf32"]) == bool(preferred["tf32"]):
+            score += 0.75
+        elif bool(combo["tf32"]):
+            score += 0.25
+        if bool(combo["cudnn_benchmark"]) == bool(preferred["cudnn_benchmark"]):
+            score += 0.5
+        elif bool(combo["cudnn_benchmark"]):
+            score += 0.1
+        scored.append((score, combo))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [combo for _, combo in scored]
+
+
+def _estimate_seed_batch(*, combo: dict[str, Any], train: dict[str, Any], batch_min: int, batch_cap: int) -> int:
+    baseline_batch = max(batch_min, int(train.get("batch", batch_min)))
+    baseline_imgsz = max(32, int(train.get("imgsz", combo["imgsz"])))
+    combo_imgsz = max(32, int(combo["imgsz"]))
+    scaled = baseline_batch * ((baseline_imgsz / combo_imgsz) ** 2)
+    seed = int(round(scaled))
+    return max(batch_min, min(batch_cap, max(seed, baseline_batch)))
+
+
+def _find_max_feasible_batch(
+    *,
+    batch_min: int,
+    batch_cap: int,
+    seed_batch: int,
+    remaining_trials: int,
+    is_feasible,
+) -> tuple[int | None, list[int]]:
+    attempts: list[int] = []
+    if remaining_trials <= 0:
+        return None, attempts
+
+    def _probe(batch: int) -> bool:
+        batch = int(batch)
+        if batch not in attempts:
+            attempts.append(batch)
+        return is_feasible(batch)
+
+    lo = max(batch_min, min(batch_cap, int(seed_batch)))
+    hi = lo
+    best: int | None = None
+    attempts_used = 0
+
+    if _probe(lo):
+        best = lo
+        attempts_used += 1
+        while hi < batch_cap and attempts_used < remaining_trials:
+            hi = min(batch_cap, max(hi + 1, hi * 2))
+            if _probe(hi):
+                best = hi
+                attempts_used += 1
+                if hi >= batch_cap:
+                    return best, attempts
+                continue
+            attempts_used += 1
+            break
+        left = (best or lo) + 1
+        right = hi - 1 if hi > (best or lo) else batch_cap
+    else:
+        attempts_used += 1
+        left = batch_min
+        right = lo - 1
+
+    while left <= right and attempts_used < remaining_trials:
+        mid = (left + right) // 2
+        if _probe(mid):
+            best = mid
+            left = mid + 1
+        else:
+            right = mid - 1
+        attempts_used += 1
+    return best, attempts
 
 
 def _apply_tuned_values(payload: dict[str, Any], *, tuned_params: dict[str, Any], gpu_signature: str, tuned_by: str, report_path: Path) -> None:
@@ -183,7 +272,7 @@ def main() -> None:
     confirm_epochs = int(tuner.get("confirm_epochs", 20))
     vram_target = float(tuner.get("vram_target_utilization", 0.92))
     batch_min = int(tuner.get("batch_min", 1))
-    batch_cap = int(min(int(tuner.get("batch_max_cap", train.get("batch_max", 64))), int(train.get("batch_max", 64))))
+    batch_cap = int(tuner.get("batch_max_cap", train.get("batch_max", 64)))
     max_trials = int(tuner.get("max_trials", 30))
 
     if batch_min < 1:
@@ -207,6 +296,7 @@ def main() -> None:
     first_non_oom_tail: str | None = None
 
     best: CandidateResult | None = None
+    fallback_seed_batch = max(batch_min, min(batch_cap, int(train.get("batch", batch_min))))
 
     _assert_dataset_ready(payload, cfg_path)
 
@@ -253,14 +343,32 @@ def main() -> None:
                     first_non_oom_tail = (trial.stdout_tail or "").strip()[:800]
             return _trial_feasible(trial=trial, peak_limit_mb=vram_limit_mb)
 
-        bs = binary_search_max_feasible(low=batch_min, high=batch_cap, is_feasible=_is_feasible)
-        if bs.best_value is None:
+        seed_batch = _estimate_seed_batch(
+            combo=combo,
+            train=train,
+            batch_min=batch_min,
+            batch_cap=batch_cap,
+        )
+        if best is not None:
+            seed_batch = max(seed_batch, min(batch_cap, int(best.batch)))
+        else:
+            seed_batch = max(seed_batch, fallback_seed_batch)
+
+        chosen_batch, _attempts = _find_max_feasible_batch(
+            batch_min=batch_min,
+            batch_cap=batch_cap,
+            seed_batch=seed_batch,
+            remaining_trials=max_trials - trial_counter,
+            is_feasible=_is_feasible,
+        )
+        if chosen_batch is None:
             continue
 
-        chosen_batch = int(bs.best_value)
+        chosen_batch = int(chosen_batch)
         chosen_trial = attempts_to_trial.get(chosen_batch)
         if chosen_trial is None:
             continue
+        fallback_seed_batch = max(fallback_seed_batch, chosen_batch)
 
         score = _throughput_proxy(
             batch=chosen_batch,

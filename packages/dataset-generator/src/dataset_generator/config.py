@@ -18,7 +18,9 @@ class GeneratorConfig:
     target_labels_dir: Path = Path("targets/labels")
     target_classes_file: Path = Path("targets/classes.txt")
     output_root: Path = Path("augmented/default")
-    hard_examples_path: Path | None = Path("artifacts/models/default/runs/current/grade/hard_examples/latest.jsonl")
+    hard_examples_path: Path | None = Path(
+        "artifacts/models/default/runs/current/grade/hard_examples/latest.jsonl"
+    )
     hard_example_boost: float = 1.5
     class_balance_strength: float = 1.0
     curriculum_enabled: bool = True
@@ -35,8 +37,8 @@ class GeneratorConfig:
     max_occlusion_ratio: float = 0.60
     allow_partial_visibility: bool = True
 
-    scale_min: float = 0.12
-    scale_max: float = 0.65
+    scale_min: float = 0.3
+    scale_max: float = 0.8
     crowd_scale_floor: float = 0.30
     translate_frac: float = 0.35
     perspective_jitter: float = 0.12
@@ -79,12 +81,23 @@ class GeneratorConfig:
             raise ValueError("hard_example_boost must be >= 0")
         if self.class_balance_strength < 0:
             raise ValueError("class_balance_strength must be >= 0")
-        if self.curriculum_orientation_metric_threshold_medium < 0 or self.curriculum_orientation_metric_threshold_medium > 1:
+        if (
+            self.curriculum_orientation_metric_threshold_medium < 0
+            or self.curriculum_orientation_metric_threshold_medium > 1
+        ):
             raise ValueError("curriculum medium threshold must be in [0,1]")
-        if self.curriculum_orientation_metric_threshold_hard < 0 or self.curriculum_orientation_metric_threshold_hard > 1:
+        if (
+            self.curriculum_orientation_metric_threshold_hard < 0
+            or self.curriculum_orientation_metric_threshold_hard > 1
+        ):
             raise ValueError("curriculum hard threshold must be in [0,1]")
-        if self.curriculum_orientation_metric_threshold_hard < self.curriculum_orientation_metric_threshold_medium:
-            raise ValueError("curriculum hard threshold must be >= medium threshold")
+        if (
+            self.curriculum_orientation_metric_threshold_hard
+            < self.curriculum_orientation_metric_threshold_medium
+        ):
+            raise ValueError(
+                "curriculum hard threshold must be >= medium threshold"
+            )
         if self.scale_min <= 0 or self.scale_max <= 0:
             raise ValueError("scale bounds must be > 0")
         if self.scale_min > self.scale_max:
@@ -106,7 +119,9 @@ class GeneratorConfig:
         if self.targets_per_image_min < 1:
             raise ValueError("targets_per_image_min must be >= 1")
         if self.targets_per_image_max < self.targets_per_image_min:
-            raise ValueError("targets_per_image_max must be >= targets_per_image_min")
+            raise ValueError(
+                "targets_per_image_max must be >= targets_per_image_min"
+            )
         if self.empty_sample_prob < 0 or self.empty_sample_prob > 1:
             raise ValueError("empty_sample_prob must be in [0,1]")
         if self.max_occlusion_ratio < 0 or self.max_occlusion_ratio >= 1:
@@ -122,7 +137,9 @@ class GeneratorConfig:
         if self.max_corner_angle_deg <= 90 or self.max_corner_angle_deg >= 180:
             raise ValueError("max_corner_angle_deg must be in (90,180)")
         if self.min_corner_angle_deg >= self.max_corner_angle_deg:
-            raise ValueError("min_corner_angle_deg must be < max_corner_angle_deg")
+            raise ValueError(
+                "min_corner_angle_deg must be < max_corner_angle_deg"
+            )
         if self.max_edge_aspect_ratio < 1.0:
             raise ValueError("max_edge_aspect_ratio must be >= 1")
         if self.angle_balance_strength < 0:
@@ -146,14 +163,21 @@ class GeneratorConfig:
             raise ValueError("color_val_gain bounds must be > 0")
         if self.color_val_gain_min > self.color_val_gain_max:
             raise ValueError("color_val_gain_min must be <= color_val_gain_max")
-        if self.gaussian_blur_kernel_min < 1 or self.gaussian_blur_kernel_max < 1:
+        if (
+            self.gaussian_blur_kernel_min < 1
+            or self.gaussian_blur_kernel_max < 1
+        ):
             raise ValueError("gaussian blur kernel bounds must be >= 1")
         if self.gaussian_blur_kernel_min > self.gaussian_blur_kernel_max:
-            raise ValueError("gaussian_blur_kernel_min must be <= gaussian_blur_kernel_max")
+            raise ValueError(
+                "gaussian_blur_kernel_min must be <= gaussian_blur_kernel_max"
+            )
         if self.motion_blur_kernel_min < 1 or self.motion_blur_kernel_max < 1:
             raise ValueError("motion blur kernel bounds must be >= 1")
         if self.motion_blur_kernel_min > self.motion_blur_kernel_max:
-            raise ValueError("motion_blur_kernel_min must be <= motion_blur_kernel_max")
+            raise ValueError(
+                "motion_blur_kernel_min must be <= motion_blur_kernel_max"
+            )
         if self.motion_blur_angle_max_deg < 0:
             raise ValueError("motion_blur_angle_max_deg must be >= 0")
         if self.noise_sigma_min < 0 or self.noise_sigma_max < 0:
@@ -164,8 +188,15 @@ class GeneratorConfig:
             raise ValueError("jpeg quality bounds must be in [1,100]")
         if self.jpeg_quality_min > self.jpeg_quality_max:
             raise ValueError("jpeg_quality_min must be <= jpeg_quality_max")
-        if "train" not in self.background_splits or "val" not in self.background_splits:
-            raise ValueError("background_splits must define train and val paths")
+        if (
+            "train" not in self.background_splits
+            or "val" not in self.background_splits
+        ):
+            raise ValueError(
+                "background_splits must define train and val paths"
+            )
         for split, path in self.background_splits.items():
             if not path.exists():
-                raise FileNotFoundError(f"background split path does not exist ({split}): {path}")
+                raise FileNotFoundError(
+                    f"background split path does not exist ({split}): {path}"
+                )

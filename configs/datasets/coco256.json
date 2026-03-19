@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "name": "coco128",
-  "dataset_dir_name": "coco128",
+  "name": "coco256",
+  "dataset_dir_name": "coco256",
   "source": {
     "type": "local_dir",
-    "local_path": "/home/thales/workspace-ai/tea-ai/dataset/coco128"
+    "local_path": "/home/thales/workspace-ai/tea-ai/dataset/coco256"
   },
   "splits": {
     "train_images_rel": "images/train2017",

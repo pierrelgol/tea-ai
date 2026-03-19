@@ -297,7 +297,7 @@ def main() -> None:
     stages: list[StageMetrics] = []
 
     execution_plan: list[tuple[str, list[str] | None]] = [
-        ("fetch-dataset", ["uv", "run", "dataset-fetcher", "--config", str(profile_cfg)]),
+        ("fetch-dataset", ["uv", "run", "dataset-extractor", "--config", str(profile_cfg)]),
         ("label-targets", None),
         ("generate-dataset", ["uv", "run", "dataset-generator", "--config", str(profile_cfg)]),
         ("check-dataset", ["uv", "run", "augment-checker", "--config", str(profile_cfg)]),

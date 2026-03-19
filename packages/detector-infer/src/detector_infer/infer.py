@@ -29,15 +29,27 @@ def _result_to_lines(res: Any) -> list[str]:
         else:
             coords = np.zeros((0, 4, 2), dtype=np.float32)
 
-        confs = obb.conf.cpu().numpy() if hasattr(obb, "conf") else np.ones((coords.shape[0],), dtype=np.float32)
-        classes = obb.cls.cpu().numpy().astype(int) if hasattr(obb, "cls") else np.zeros((coords.shape[0],), dtype=int)
+        confs = (
+            obb.conf.cpu().numpy()
+            if hasattr(obb, "conf")
+            else np.ones((coords.shape[0],), dtype=np.float32)
+        )
+        classes = (
+            obb.cls.cpu().numpy().astype(int)
+            if hasattr(obb, "cls")
+            else np.zeros((coords.shape[0],), dtype=int)
+        )
 
         coords = np.clip(coords, 0.0, 1.0)
         for i in range(coords.shape[0]):
-            lines.append(_format_obb_line(int(classes[i]), coords[i], float(confs[i])))
+            lines.append(
+                _format_obb_line(int(classes[i]), coords[i], float(confs[i]))
+            )
         return lines
 
-    raise RuntimeError("Model prediction does not expose OBB output; OBB model/weights are required")
+    raise RuntimeError(
+        "Model prediction does not expose OBB output; OBB model/weights are required"
+    )
 
 
 def run_inference(config: InferConfig) -> dict:
@@ -71,8 +83,16 @@ def run_inference(config: InferConfig) -> dict:
             )
             for image_path, res in zip(batch_paths, results):
                 lines = _result_to_lines(res)
-                out_path = config.output_root / config.model_name / "labels" / split / f"{image_path.stem}.txt"
-                write_prediction_file(out_path, lines, save_empty=config.save_empty)
+                out_path = (
+                    config.output_root
+                    / config.model_name
+                    / "labels"
+                    / split
+                    / f"{image_path.stem}.txt"
+                )
+                write_prediction_file(
+                    out_path, lines, save_empty=config.save_empty
+                )
                 written += 1
 
     return {

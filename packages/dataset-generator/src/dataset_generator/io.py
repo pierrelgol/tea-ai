@@ -8,6 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+
 @dataclass(slots=True)
 class CanonicalTarget:
     image_path: Path
@@ -19,8 +20,14 @@ class CanonicalTarget:
 
 def load_target_classes(classes_file: Path) -> list[str]:
     if not classes_file.exists():
-        raise FileNotFoundError(f"Target classes file not found: {classes_file}")
-    classes = [line.strip() for line in classes_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+        raise FileNotFoundError(
+            f"Target classes file not found: {classes_file}"
+        )
+    classes = [
+        line.strip()
+        for line in classes_file.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     if not classes:
         raise ValueError(f"No classes found in {classes_file}")
     return classes
@@ -29,10 +36,29 @@ def load_target_classes(classes_file: Path) -> list[str]:
 def _parse_yolo_line(line: str) -> tuple[int, np.ndarray]:
     parts = line.split()
     if len(parts) != 9:
-        raise ValueError(f"Expected 9 values in OBB YOLO line, got {len(parts)}")
+        raise ValueError(
+            f"Expected 9 values in OBB YOLO line, got {len(parts)}"
+        )
     class_id = int(parts[0])
-    coords = np.array([float(x) for x in parts[1:]], dtype=np.float32).reshape(4, 2)
+    coords = np.array([float(x) for x in parts[1:]], dtype=np.float32).reshape(
+        4, 2
+    )
     return class_id, coords
+
+
+def _load_single_canonical_label(label_path: Path) -> tuple[int, np.ndarray]:
+    lines = [
+        line.strip()
+        for line in label_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not lines:
+        raise ValueError(f"Canonical target label is empty: {label_path}")
+    if len(lines) != 1:
+        raise ValueError(
+            f"Canonical target labels must contain exactly one OBB row: {label_path}"
+        )
+    return _parse_yolo_line(lines[0])
 
 
 def load_canonical_targets(
@@ -41,13 +67,19 @@ def load_canonical_targets(
     target_classes_file: Path,
 ) -> list[CanonicalTarget]:
     classes = load_target_classes(target_classes_file)
-    image_paths = sorted(
-        [
-            p
-            for p in target_images_dir.iterdir()
-            if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"}
-        ]
-    )
+    if not target_images_dir.exists():
+        raise FileNotFoundError(
+            f"Target images directory not found: {target_images_dir}"
+        )
+    if not target_labels_dir.exists():
+        raise FileNotFoundError(
+            f"Target labels directory not found: {target_labels_dir}"
+        )
+    image_paths = sorted([
+        p
+        for p in target_images_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"}
+    ])
     if not image_paths:
         raise ValueError(f"No target images found in {target_images_dir}")
 
@@ -62,13 +94,11 @@ def load_canonical_targets(
             continue
 
         h, w = image.shape[:2]
-        line = label_path.read_text(encoding="utf-8").strip().splitlines()
-        if not line:
-            continue
-
-        class_id, corners_norm = _parse_yolo_line(line[0])
+        class_id, corners_norm = _load_single_canonical_label(label_path)
         if class_id < 0 or class_id >= len(classes):
-            raise ValueError(f"Class id {class_id} in {label_path} outside classes range")
+            raise ValueError(
+                f"Class id {class_id} in {label_path} outside classes range"
+            )
 
         corners = corners_norm.astype(np.float64).copy()
         corners[:, 0] *= w
@@ -88,20 +118,21 @@ def load_canonical_targets(
     return targets
 
 
-def load_backgrounds_by_split(split_dirs: dict[str, Path]) -> dict[str, list[Path]]:
+def load_backgrounds_by_split(
+    split_dirs: dict[str, Path],
+) -> dict[str, list[Path]]:
     out: dict[str, list[Path]] = {}
     for split in ("train", "val"):
         split_dir = split_dirs[split]
         if not split_dir.exists():
             out[split] = []
             continue
-        out[split] = sorted(
-            [
-                p
-                for p in split_dir.iterdir()
-                if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"}
-            ]
-        )
+        out[split] = sorted([
+            p
+            for p in split_dir.iterdir()
+            if p.is_file()
+            and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"}
+        ])
     return out
 
 
@@ -116,8 +147,12 @@ def _sha1_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def audit_background_split_overlap(backgrounds_by_split: dict[str, list[Path]]) -> dict:
-    train_hashes = {_sha1_file(p): p for p in backgrounds_by_split.get("train", [])}
+def audit_background_split_overlap(
+    backgrounds_by_split: dict[str, list[Path]],
+) -> dict:
+    train_hashes = {
+        _sha1_file(p): p for p in backgrounds_by_split.get("train", [])
+    }
     val_hashes = {_sha1_file(p): p for p in backgrounds_by_split.get("val", [])}
     overlap_hashes = sorted(set(train_hashes) & set(val_hashes))
     overlaps = [
@@ -136,15 +171,23 @@ def audit_background_split_overlap(backgrounds_by_split: dict[str, list[Path]]) 
     }
 
 
-def enforce_disjoint_background_splits(backgrounds_by_split: dict[str, list[Path]]) -> tuple[dict[str, list[Path]], dict]:
-    train_hashes = {_sha1_file(p): p for p in backgrounds_by_split.get("train", [])}
+def enforce_disjoint_background_splits(
+    backgrounds_by_split: dict[str, list[Path]],
+) -> tuple[dict[str, list[Path]], dict]:
+    train_hashes = {
+        _sha1_file(p): p for p in backgrounds_by_split.get("train", [])
+    }
     val_hashes = {_sha1_file(p): p for p in backgrounds_by_split.get("val", [])}
     overlap_hashes = sorted(set(train_hashes) & set(val_hashes))
 
     reassigned_train: list[str] = []
     reassigned_val: list[str] = []
-    out_train: list[Path] = [p for h, p in train_hashes.items() if h not in overlap_hashes]
-    out_val: list[Path] = [p for h, p in val_hashes.items() if h not in overlap_hashes]
+    out_train: list[Path] = [
+        p for h, p in train_hashes.items() if h not in overlap_hashes
+    ]
+    out_val: list[Path] = [
+        p for h, p in val_hashes.items() if h not in overlap_hashes
+    ]
 
     for h in overlap_hashes:
         # Deterministic 80/20 split assignment for duplicate content.
@@ -179,10 +222,15 @@ def _format_yolo_obb_line(class_id: int, obb_norm: np.ndarray) -> str:
     return f"{class_id} {coords}"
 
 
-def write_yolo_obb_labels(path: Path, labels: list[tuple[int, np.ndarray]]) -> None:
+def write_yolo_obb_labels(
+    path: Path, labels: list[tuple[int, np.ndarray]]
+) -> None:
     """Write one or more YOLO OBB lines: class x1 y1 x2 y2 x3 y3 x4 y4."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [_format_yolo_obb_line(class_id, obb_norm) for class_id, obb_norm in labels]
+    lines = [
+        _format_yolo_obb_line(class_id, obb_norm)
+        for class_id, obb_norm in labels
+    ]
     text = "\n".join(lines)
     if text:
         text += "\n"
@@ -194,7 +242,9 @@ def write_metadata(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def write_augmented_classes(output_root: Path, target_classes: list[str], class_offset_base: int) -> None:
+def write_augmented_classes(
+    output_root: Path, target_classes: list[str], class_offset_base: int
+) -> None:
     classes_path = output_root / "classes.txt"
     classes_path.parent.mkdir(parents=True, exist_ok=True)
 

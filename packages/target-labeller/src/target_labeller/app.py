@@ -116,9 +116,12 @@ class LabelerWindow(QMainWindow):
 
     def _reload_class_picker(self) -> None:
         classes = load_classes(self.classes_file)
+        current_text = self.class_input.text().strip()
         self.class_picker.blockSignals(True)
         self.class_picker.clear()
         self.class_picker.addItems(classes)
+        if current_text and current_text in classes:
+            self.class_picker.setCurrentText(current_text)
         self.class_picker.blockSignals(False)
 
     def _on_class_selected(self, text: str) -> None:
@@ -144,6 +147,8 @@ class LabelerWindow(QMainWindow):
         self.image_info.setText(
             f"{self.index + 1}/{len(self.images)} - {image_path.name}"
         )
+        self.class_input.clear()
+        self.class_picker.setCurrentIndex(-1)
 
         label_data = load_yolo_label(self._label_file_for(image_path))
         if label_data is None:
@@ -159,6 +164,8 @@ class LabelerWindow(QMainWindow):
             class_name = classes[class_id]
             self.class_input.setText(class_name)
             self.class_picker.setCurrentText(class_name)
+        else:
+            self.class_picker.setCurrentIndex(-1)
 
     def save_current(self) -> None:
         class_name = self.class_input.text().strip()
@@ -180,6 +187,7 @@ class LabelerWindow(QMainWindow):
         label_path = self._label_file_for(image_path)
         save_yolo_label(label_path, class_id, yolo_box)
         self._reload_class_picker()
+        self.class_picker.setCurrentText(class_name)
         self._export_single_target(image_path, label_path)
 
     def prev_image(self) -> None:

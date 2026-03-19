@@ -7,7 +7,7 @@
   },
   "run": {
     "dataset": "coco1024",
-    "model": "hf-openvision-yolo26-n-obb",
+    "model": "openvision/yolo26-n-obb",
     "model_key": "yolo26n_obb",
     "run_id": "current",
     "seed": 42
@@ -15,6 +15,7 @@
   "dataset": {
     "name": "coco1024",
     "augmented_subdir": "augmented",
+    "train_zip": "train2017.zip",
     "splits": [
       "train",
       "val"
@@ -25,13 +26,14 @@
   },
   "tuner": {
     "enabled": true,
-    "dataset": "coco128",
-    "coarse_epochs": 10,
-    "confirm_epochs": 20,
+    "dataset": "coco1024",
+    "coarse_epochs": 4,
+    "confirm_epochs": 8,
     "vram_target_utilization": 0.92,
-    "batch_min": 1,
-    "batch_max_cap": 64,
+    "batch_min": 4,
+    "batch_max_cap": 1024,
     "imgsz_candidates": [
+      1024,
       512,
       448,
       384
@@ -40,11 +42,12 @@
       4,
       8,
       12,
-      16
+      16,
+      32
     ],
     "cache_candidates": [
-      "ram",
-      "disk"
+      "disk",
+      "ram"
     ],
     "amp_candidates": [
       true,
@@ -58,18 +61,18 @@
       true,
       false
     ],
-    "max_trials": 30,
+    "max_trials": 4,
     "artifacts_subdir": "tuner"
   },
   "train": {
-    "epochs": 128,
-    "imgsz": 512,
+    "epochs": 50,
+    "imgsz": 1024,
     "batch": 32,
     "batch_mode": "fixed",
     "batch_max": 32,
     "batch_utilization_target": 0.92,
     "oom_backoff_factor": 0.85,
-    "workers": 4,
+    "workers": 8,
     "workers_auto": true,
     "workers_max": 16,
     "patience": 30,
@@ -150,21 +153,21 @@
     "wandb_log_every_epoch": true,
     "eval_enabled": true,
     "periodic_eval_mode": "sparse",
-    "periodic_eval_sparse_epochs": 10,
+    "periodic_eval_sparse_epochs": 4,
     "eval_interval_epochs": 2,
     "eval_iou_threshold": 0.75,
     "eval_conf_threshold": 0.9,
     "eval_viz_samples": 1,
     "eval_viz_split": "val",
-    "tuned_gpu_signature": "d2c2da918147503a",
-    "tuned_at_utc": "2026-02-23T23:33:56+00:00",
-    "tuned_by": "gpu-auto-tuner@0.1.0",
-    "tuned_profile_path": "/home/pollivie/workspace-ai/tea-ai/artifacts/models/yolo26n_obb/runs/current/tuner/d2c2da918147503a/tuner_report.json"
+    "tuned_gpu_signature": null,
+    "tuned_at_utc": null,
+    "tuned_by": null,
+    "tuned_profile_path": null
   },
   "infer": {
     "imgsz": 640,
     "device": "auto",
-    "conf_threshold": 0.25,
+    "conf_threshold": 0.9,
     "iou_threshold": 0.7,
     "splits": [
       "val"
@@ -179,8 +182,8 @@
     "imgsz": 640,
     "device": "auto",
     "conf_threshold": 0.25,
-    "infer_iou_threshold": 0.7,
-    "match_iou_threshold": 0.5,
+    "infer_iou_threshold": 0.9,
+    "match_iou_threshold": 0.8,
     "strict_obb": true,
     "max_samples": null,
     "calibrate_confidence": true,
@@ -190,7 +193,7 @@
   },
   "review": {
     "split": "val",
-    "conf_threshold": 0.25
+    "conf_threshold": 0.8
   },
   "checks": {
     "outlier_threshold_px": 2.0,
@@ -199,7 +202,7 @@
     "seed": 42
   },
   "profile": {
-    "dataset": "coco128",
+    "dataset": "coco1024",
     "train_epochs": 50,
     "enable_gpu_sampling": true,
     "baseline_run": "profile-20260223-193528",

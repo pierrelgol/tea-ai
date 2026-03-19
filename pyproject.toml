@@ -18,7 +18,7 @@ dependencies = [
   "detector-train",
   "detector-optimize",
   "dataset-generator",
-  "dataset-fetcher",
+  "dataset-extractor",
   "target-labeller",
   "huggingface-hub>=1.4.1",
   "tqdm>=4.66.0",
@@ -45,6 +45,6 @@ detector-infer = { workspace = true }
 detector-train = { workspace = true }
 detector-optimize = { workspace = true }
 dataset-generator = { workspace = true }
-dataset-fetcher = { workspace = true }
+dataset-extractor = { workspace = true }
 target-labeller = { workspace = true }
 gpu-auto-tuner = { workspace = true }

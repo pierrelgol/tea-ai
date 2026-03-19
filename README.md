@@ -18,7 +18,7 @@ Production-grade pipeline for fine-tuning YOLO OBB (Oriented Bounding Box) detec
 │   │                         DATA PREPARATION STAGES                                 │   │
 │   │                                                                                 │   │
 │   │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                  │   │
-│   │  │ dataset-fetcher │  │ dinov3-fetcher  │  │ target-labeller │                  │   │
+│   │  │dataset-extractor│  │ dinov3-fetcher  │  │ target-labeller │                  │   │
 │   │  │ ─────────────── │  │ ─────────────── │  │ ─────────────── │                  │   │
 │   │  │ • Download      │  │ • HF Hub        │  │ • Qt GUI        │                  │   │
 │   │  │ • Validate      │  │ • Cache teacher │  │ • OBB annotate  │                  │   │
@@ -154,7 +154,7 @@ All stages read from the same config. See `pipeline-config` for schema details.
 |---------|---------|-------|
 | `pipeline-config` | Schema validation & path layout | Foundation |
 | `pipeline-runtime-utils` | Device, seeding, geometry | Shared |
-| `dataset-fetcher` | Dataset acquisition | 1 |
+| `dataset-extractor` | Dataset acquisition | 1 |
 | `dinov3-fetcher` | Teacher model download | 2 |
 | `target-labeller` | OBB annotation GUI | 3 |
 | `dataset-generator` | Synthetic data synthesis | 4 |
@@ -173,7 +173,7 @@ All stages read from the same config. See `pipeline-config` for schema details.
 ```
 Raw Targets ──▶ target-labeller ──▶ Canonical Targets (targets/)
                                                         │
-COCO Dataset ──▶ dataset-fetcher ──▶ Backgrounds ──────┤
+COCO Dataset ──▶ dataset-extractor ──▶ Backgrounds ────┤
                                                         ▼
 DINOv3 Model ──▶ dinov3-fetcher ──▶ Teacher ───────▶ dataset-generator
                                                         │
@@ -263,7 +263,7 @@ just clean        # Keep venv
 just fclean       # Full clean
 
 # Run individual stages
-uv run dataset-fetcher --config config.json
+uv run dataset-extractor --config config.json
 uv run detector-train --config config.json
 ```
 

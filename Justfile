@@ -45,7 +45,7 @@ fclean: clean
 
 fetch-dataset: venv
     @uv sync --all-packages
-    @uv run dataset-fetcher --config {{config}}
+    @uv run dataset-extractor --config {{config}}
 
 fetch-dinov3: venv
     @uv sync --all-packages
@@ -75,6 +75,10 @@ eval: venv
     @uv sync --all-packages
     @uv run detector-infer --config {{config}}
     @uv run detector-grader --config {{config}}
+
+benchmark-eval: venv
+    @uv sync --all-packages
+    @uv run detector-infer-benchmark --config {{config}}
 
 optimize: venv
     @uv sync --all-packages
